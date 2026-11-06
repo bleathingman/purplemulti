@@ -50,11 +50,12 @@ from classes import (
     RobloxAccountManager,
 )
 from classes.encryption import EncryptionConfig, PasswordEncryption
-from classes.operation_result import OperationResult, ensure_result
+from classes.operation_result import OperationResult, ensure_result, unexpected_result
 from classes.roblox_api import RobloxAPI
 
 import features.account_actions as actions
 import features.account_backup as account_backup
+import features.auto_backup as auto_backup
 import features.account_creator as account_creator_mod
 import features.auto_rejoin as ar
 import features.account_filter as account_filter
@@ -364,6 +365,7 @@ class _Bridge(QObject):
     roblox_settings_auto_applied = Signal(object) # OperationResult from Roblox settings Auto Apply
     roblox_settings_path_changed = Signal(object)
     console_wakeup = Signal()
+    auto_backup_done = Signal(object) # OperationResult from an automatic or manual auto-backup run
 
 
 SKIPPED_UPDATE_SETTING = "skipped_update_version"
@@ -1044,6 +1046,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         self._bridge.update_available.connect(self._on_update_available)
         self._bridge.update_check_finished.connect(self._on_update_check_finished)
         self._bridge.join_place_resolved.connect(self._on_join_place_resolved)
+        self._bridge.auto_backup_done.connect(self._on_auto_backup_done)
         self._bridge.recent_game_saved.connect(self._refresh_recent_games)
         self._bridge.favorite_place_resolved.connect(self._on_favorite_place_resolved)
         self._bridge.headless_update.connect(self._on_headless_update)
@@ -1178,6 +1181,12 @@ class AccountManagerUIQt(QMainWindow): # Main Window
 
         QTimer.singleShot(2500, self._start_cookie_validator)
         QTimer.singleShot(500, self._start_update_check)
+        self._auto_backup_running = False
+        self._auto_backup_timer = QTimer(self)
+        self._auto_backup_timer.setInterval(30 * 60 * 1000)
+        self._auto_backup_timer.timeout.connect(self._auto_backup_tick)
+        self._auto_backup_timer.start()
+        QTimer.singleShot(20_000, self._auto_backup_tick)
         if S.get("browser_type", "chrome") == "chromium":
             QTimer.singleShot(1500, self._start_chromium_status_check)
         self._theme_manager = theme_runtime.get_manager()
@@ -2338,18 +2347,27 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         lay.setContentsMargins(*ui_kit.PAGE_MARGINS)
         lay.setSpacing(14)
 
-        self._mr_status_lbl = ui_kit.chip("Status: Disabled")
+        self._mr_status_lbl = ui_kit.chip("Status: Starting")
         lay.addLayout(ui_kit.page_header(
             "Multi Roblox",
-            "Allows multiple Roblox instances to run simultaneously.",
+            "Always on: it starts with PurpleMulti, so several Roblox clients can run at once.",
             self._mr_status_lbl,
         ))
 
-        enable_card, enable_lay = ui_kit.card()
-        self._mr_enabled_chk = QCheckBox("Enable Multi Roblox")
-        self._mr_enabled_chk.stateChanged.connect(self._on_mr_enabled_changed)
-        enable_lay.addWidget(self._mr_enabled_chk)
-        lay.addWidget(enable_card)
+        # Shown only while Multi Roblox is not running, e.g. after Roblox was open at startup.
+        self._mr_retry_card, retry_lay = ui_kit.card()
+        retry_row = QHBoxLayout()
+        retry_row.setSpacing(12)
+        retry_row.addWidget(ui_kit.caption(
+            "Multi Roblox is not active. Close every Roblox client, then start it."
+        ), 1)
+        self._mr_retry_btn = ui_kit.set_variant(QPushButton("Start Now"), "primary")
+        theme_runtime.bind_icon(self._mr_retry_btn, "play", tone="ON_ACCENT")
+        self._mr_retry_btn.clicked.connect(self._start_multi_roblox)
+        retry_row.addWidget(self._mr_retry_btn)
+        retry_lay.addLayout(retry_row)
+        self._mr_retry_card.hide()
+        lay.addWidget(self._mr_retry_card)
 
         lay.addWidget(ui_kit.section_label("Method"))
         method_card, method_lay = ui_kit.card(spacing=2)
@@ -2410,7 +2428,8 @@ class AccountManagerUIQt(QMainWindow): # Main Window
     def _load_mr_settings(self):
         saved = actions.load_ui_settings()
         self._mr_method = saved.get("multi_roblox_method", "default")
-        self._mr_enabled = saved.get("multi_roblox_enabled", False)
+        # Always on in this build: the old "multi_roblox_enabled" setting is ignored.
+        self._mr_enabled = True
 
         handle64_available = bool(actions.find_handle64())
         self._mr_handle64_radio.setEnabled(handle64_available)
@@ -2427,9 +2446,6 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         self._mr_handle64_radio.blockSignals(False)
         self._mr_default_radio.blockSignals(False)
 
-        self._mr_enabled_chk.blockSignals(True)
-        self._mr_enabled_chk.setChecked(self._mr_enabled)
-        self._mr_enabled_chk.blockSignals(False)
         self._update_mr_h64_status()
         self._update_mr_status()
 
@@ -2481,21 +2497,6 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         else:
             self._update_mr_status()
 
-    def _on_mr_enabled_changed(self, state):
-        try:
-            self._mr_enabled = (state == Qt.CheckState.Checked.value)
-            actions.save_ui_setting("multi_roblox_enabled", self._mr_enabled)
-
-            if self._mr_enabled:
-                QTimer.singleShot(0, self._start_multi_roblox)
-            else:
-                self._stop_multi_roblox()
-
-            self._update_mr_status()
-
-        except Exception as e:
-            print(f"Error in _on_mr_enabled_changed: {e}")
-
     def _start_multi_roblox(self):
         if getattr(self, "_admin_restart_pending", False):
             return
@@ -2519,11 +2520,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
                     self._wait_for_roblox_exit(3.0, self._finish_start_multi_roblox)
                     return
                 else:
-                    self._mr_enabled = False
-                    self._mr_enabled_chk.blockSignals(True)
-                    self._mr_enabled_chk.setChecked(False)
-                    self._mr_enabled_chk.blockSignals(False)
-                    actions.save_ui_setting("multi_roblox_enabled", False)
+                    # Stays always on; the Multi Roblox page offers Start Now.
                     self._update_mr_status()
                     return
 
@@ -2596,11 +2593,6 @@ class AccountManagerUIQt(QMainWindow): # Main Window
                     "Multi Roblox",
                     f"Multi Roblox could not be started.\n\n{msg}",
                 )
-            self._mr_enabled = False
-            self._mr_enabled_chk.blockSignals(True)
-            self._mr_enabled_chk.setChecked(False)
-            self._mr_enabled_chk.blockSignals(False)
-            actions.save_ui_setting("multi_roblox_enabled", False)
             self._update_mr_status()
         else:
             self._update_mr_status()
@@ -2648,7 +2640,10 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         if running:
             ui_kit.set_chip(self._mr_status_lbl, f"Status: Running ({method_str})", "success")
         else:
-            ui_kit.set_chip(self._mr_status_lbl, "Status: Disabled")
+            ui_kit.set_chip(self._mr_status_lbl, "Status: Not active", "warning")
+        retry_card = getattr(self, "_mr_retry_card", None)
+        if retry_card is not None:
+            retry_card.setVisible(not running)
 
     def _on_mr_download_handle64(self):
         self._mr_dl_btn.setText("Downloading...")
@@ -3549,6 +3544,8 @@ class AccountManagerUIQt(QMainWindow): # Main Window
             """)
         _wipe_btn.clicked.connect(self._on_sett_wipe_data)
         f.addWidget(_wipe_btn)
+
+        self._build_auto_backup_section(f, _sec)
 
         f.addStretch(1)
 
@@ -5264,6 +5261,208 @@ class AccountManagerUIQt(QMainWindow): # Main Window
                     QMessageBox.warning(self, "Password Mismatch", "Passwords do not match.")
                     continue
             return password
+
+    # Automatic backups
+    def _build_auto_backup_section(self, f, _sec) -> None:
+        settings = actions.load_ui_settings()
+        f.addWidget(_sec("AUTOMATIC BACKUP"))
+        f.addWidget(ui_kit.caption(
+            "Saves a password-protected copy of your accounts on a schedule. Unlike the "
+            "account file, it opens on any PC: restore it with Import Accounts, even after "
+            "reinstalling Windows. Pick a folder that survives that, like OneDrive or another drive."
+        ))
+
+        self._sett_auto_backup_chk = QCheckBox("Back Up Accounts Automatically")
+        self._sett_auto_backup_chk.setChecked(
+            auto_backup.is_enabled(settings)
+            and bool(self.manager.get_secure_setting(auto_backup.PASSWORD_KEY, ""))
+        )
+        self._sett_auto_backup_chk.toggled.connect(self._on_sett_auto_backup_toggled)
+        f.addWidget(self._sett_auto_backup_chk)
+
+        folder_row = QHBoxLayout()
+        folder_row.setSpacing(8)
+        folder_row.addWidget(QLabel("Folder"))
+        self._sett_auto_backup_folder = QLineEdit(auto_backup.folder(settings))
+        self._sett_auto_backup_folder.setReadOnly(True)
+        self._sett_auto_backup_folder.setCursorPosition(0)
+        folder_row.addWidget(self._sett_auto_backup_folder, 1)
+        browse_btn = QPushButton("Browse")
+        browse_btn.clicked.connect(self._on_sett_auto_backup_browse)
+        folder_row.addWidget(browse_btn)
+        open_btn = QPushButton("Open")
+        open_btn.setToolTip("Open the backup folder in Explorer.")
+        open_btn.clicked.connect(self._on_sett_auto_backup_open)
+        folder_row.addWidget(open_btn)
+        f.addLayout(folder_row)
+
+        interval_spin = QSpinBox()
+        interval_spin.setRange(*auto_backup.INTERVAL_RANGE)
+        interval_spin.setValue(auto_backup.interval_days(settings))
+        interval_spin.setSuffix(" days")
+        interval_spin.setFixedWidth(90)
+        interval_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
+        interval_spin.valueChanged.connect(
+            lambda value: actions.save_ui_setting(auto_backup.INTERVAL_SETTING, value)
+        )
+        f.addLayout(ui_kit.form_row("Back up every", interval_spin))
+
+        keep_spin = QSpinBox()
+        keep_spin.setRange(*auto_backup.KEEP_RANGE)
+        keep_spin.setValue(auto_backup.keep_count(settings))
+        keep_spin.setSuffix(" files")
+        keep_spin.setFixedWidth(90)
+        keep_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
+        keep_spin.setToolTip("Older automatic backups are deleted. Other files in the folder are never touched.")
+        keep_spin.valueChanged.connect(
+            lambda value: actions.save_ui_setting(auto_backup.KEEP_SETTING, value)
+        )
+        f.addLayout(ui_kit.form_row("Keep the newest", keep_spin))
+
+        status_row = QHBoxLayout()
+        status_row.setSpacing(8)
+        self._sett_auto_backup_status = ui_kit.caption()
+        status_row.addWidget(self._sett_auto_backup_status, 1)
+        self._sett_auto_backup_now_btn = QPushButton("Back Up Now")
+        self._sett_auto_backup_now_btn.clicked.connect(self._on_sett_auto_backup_now)
+        status_row.addWidget(self._sett_auto_backup_now_btn)
+        password_btn = QPushButton("Change Password")
+        password_btn.clicked.connect(self._on_sett_auto_backup_password)
+        status_row.addWidget(password_btn)
+        f.addLayout(status_row)
+        self._refresh_auto_backup_status()
+
+    def _refresh_auto_backup_status(self, error: str = "") -> None:
+        label = getattr(self, "_sett_auto_backup_status", None)
+        if label is None:
+            return
+        last = auto_backup.last_backup(actions.load_ui_settings())
+        text = f"Last backup: {last.astimezone():%Y-%m-%d %H:%M}" if last else "No backup yet."
+        if error:
+            text += f" Last attempt failed: {error}"
+        label.setText(text)
+
+    def _ask_new_backup_password(self, title: str) -> str | None:
+        QMessageBox.information(
+            self, title,
+            "Choose a password for the backup files. You need it to restore them "
+            "on another PC or after reinstalling Windows, so write it down somewhere safe."
+            + chr(10) + chr(10)
+            + "PurpleMulti keeps it with your encrypted accounts so backups run without asking.",
+        )
+        while True:
+            password = self._ask_backup_password(confirm=True)
+            if password is None:
+                return None
+            if len(password) >= account_backup.MIN_PASSWORD_LENGTH:
+                return password
+            QMessageBox.warning(
+                self, title,
+                f"Use at least {account_backup.MIN_PASSWORD_LENGTH} characters.",
+            )
+
+    def _store_auto_backup_password(self, title: str) -> bool:
+        password = self._ask_new_backup_password(title)
+        if password is None:
+            return False
+        result = self.manager.set_secure_setting(auto_backup.PASSWORD_KEY, password)
+        if not result:
+            self._show_operation_error(result)
+            return False
+        return True
+
+    def _on_sett_auto_backup_toggled(self, checked: bool) -> None:
+        if checked:
+            has_password = bool(self.manager.get_secure_setting(auto_backup.PASSWORD_KEY, ""))
+            if not has_password and not self._store_auto_backup_password("Automatic Backup"):
+                self._sett_auto_backup_chk.blockSignals(True)
+                self._sett_auto_backup_chk.setChecked(False)
+                self._sett_auto_backup_chk.blockSignals(False)
+                return
+            actions.save_ui_setting(auto_backup.ENABLED_SETTING, True)
+            self._auto_backup_tick(force=True)
+        else:
+            actions.save_ui_setting(auto_backup.ENABLED_SETTING, False)
+            # Nothing should keep the password once backups are off.
+            self.manager.remove_secure_setting(auto_backup.PASSWORD_KEY)
+
+    def _on_sett_auto_backup_browse(self) -> None:
+        chosen = QFileDialog.getExistingDirectory(
+            self, "Backup Folder", self._sett_auto_backup_folder.text()
+        )
+        if not chosen:
+            return
+        chosen = os.path.normpath(chosen)
+        actions.save_ui_setting(auto_backup.FOLDER_SETTING, chosen)
+        self._sett_auto_backup_folder.setText(chosen)
+        self._sett_auto_backup_folder.setCursorPosition(0)
+
+    def _on_sett_auto_backup_open(self) -> None:
+        target = self._sett_auto_backup_folder.text()
+        try:
+            os.makedirs(target, exist_ok=True)
+            os.startfile(target)
+        except OSError as exc:
+            _show_error(self, "Backup Folder", f"The folder could not be opened: {exc}")
+
+    def _on_sett_auto_backup_now(self) -> None:
+        if not self.manager.get_secure_setting(auto_backup.PASSWORD_KEY, ""):
+            if not self._store_auto_backup_password("Back Up Now"):
+                return
+        self._auto_backup_tick(force=True)
+
+    def _on_sett_auto_backup_password(self) -> None:
+        if self._store_auto_backup_password("Change Backup Password"):
+            _show_info(
+                self, "Change Backup Password",
+                "New backups will use the new password. Backups made before keep their old password.",
+            )
+
+    def _auto_backup_tick(self, force: bool = False) -> None:
+        if self._auto_backup_running:
+            return
+        settings = actions.load_ui_settings()
+        if not force and not auto_backup.is_due(settings):
+            return
+        password = self.manager.get_secure_setting(auto_backup.PASSWORD_KEY, "")
+        if not password:
+            if auto_backup.is_enabled(settings):
+                print("[WARNING] Automatic backup is on but has no password. Set one in Settings > Misc.")
+            return
+        with self.manager._accounts_lock:
+            accounts = dict(self.manager.accounts)
+        if not accounts:
+            return
+        target = auto_backup.folder(settings)
+        keep = auto_backup.keep_count(settings)
+        self._auto_backup_running = True
+        button = getattr(self, "_sett_auto_backup_now_btn", None)
+        if button is not None:
+            button.setEnabled(False)
+            button.setText("Backing Up...")
+
+        def _worker():
+            try:
+                result = auto_backup.run_backup(accounts, target, password, keep)
+            except Exception as exc:
+                result = unexpected_result("Automatic account backup", exc)
+            self._bridge.auto_backup_done.emit(result)
+
+        threading.Thread(target=_worker, daemon=True, name="AutoBackup").start()
+
+    def _on_auto_backup_done(self, result) -> None:
+        self._auto_backup_running = False
+        button = getattr(self, "_sett_auto_backup_now_btn", None)
+        if button is not None:
+            button.setEnabled(True)
+            button.setText("Back Up Now")
+        if result:
+            actions.save_ui_setting(auto_backup.LAST_SETTING, result.data["time"])
+            print(f"[INFO] Automatic backup saved: {result.data['path']} ({result.data['count']} account(s))")
+            self._refresh_auto_backup_status()
+        else:
+            print(f"[WARNING] Automatic backup failed: {result.code}: {result.message} {result.detail or ''}")
+            self._refresh_auto_backup_status(result.message)
 
     def _on_sett_export_accounts(self) -> None:
         if not self.manager.accounts:

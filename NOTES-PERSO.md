@@ -40,6 +40,15 @@ l'équivalent d'une session ouverte : qui le possède contrôle le compte.
 - Interface refaite : thème violet par défaut, nouvelle icône, barre latérale,
   cartes, interrupteurs et réglages en onglets.
 - `Ctrl+1`, `Ctrl+2`… ouvrent les pages de la barre latérale, dans l'ordre.
+- Multi Roblox toujours actif : plus d'interrupteur, il démarre avec l'app.
+  Si Roblox est déjà ouvert et que tu refuses de le fermer, la page Multi
+  Roblox affiche « Start Now ». Le choix Default / Handle64 reste sur la page.
+- Sauvegarde automatique (`Settings > Misc > Automatic Backup`) : un `.rambak`
+  protégé par son propre mot de passe, tous les 7 jours par défaut, dans
+  `Documents\PurpleMulti Backups`, en gardant les 5 derniers. Le mot de passe
+  est rangé avec les comptes chiffrés, et effacé si tu désactives la fonction.
+  Pour restaurer : `Import Accounts` + ce mot de passe. Code :
+  `src/features/auto_backup.py`.
 - Page Donations : elle n'apparaît que si `DONATION_LINKS`, en haut de
   `src/utils/ui.py`, contient au moins un lien (PayPal, Ko-fi…). Chaque lien
   a une carte avec « Copy Link » et « Open ».
@@ -83,8 +92,9 @@ retombe à 1 px.
   Windows, pas contre un programme qui tourne sous ta session. Le mode mot de
   passe résiste mieux à ce cas, au prix d'une saisie à chaque démarrage.
 - DPAPI ne survit pas à une réinstallation de Windows ni à une réinitialisation
-  forcée du mot de passe Windows. Fais un export (`Settings > Misc`) de temps en
-  temps : c'est le seul moyen de récupérer les comptes dans ces cas.
+  forcée du mot de passe Windows. Active la sauvegarde automatique (ou fais un
+  export de temps en temps) : c'est le seul moyen de récupérer les comptes dans
+  ces cas.
 - Les exports `.rambak` faits ici ne s'ouvrent pas dans la version d'origine.
 
 ## Récupérer les nouveautés de l'original

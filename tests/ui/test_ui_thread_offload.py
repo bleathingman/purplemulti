@@ -66,7 +66,6 @@ class StartMultiRobloxTests(unittest.TestCase):
         self.window = SimpleNamespace(
             _mr_method="default",
             _mr_enabled=True,
-            _mr_enabled_chk=QCheckBox(),
             _update_mr_status=MagicMock(),
             _wait_for_roblox_exit=MagicMock(),
             _finish_start_multi_roblox=MagicMock(),
@@ -86,14 +85,14 @@ class StartMultiRobloxTests(unittest.TestCase):
         self.window._wait_for_roblox_exit.assert_called_once_with(3.0, self.window._finish_start_multi_roblox)
         self.window._finish_start_multi_roblox.assert_not_called()
 
-    def test_declining_leaves_multi_roblox_off(self):
-        self.window._mr_enabled_chk.setChecked(True)
+    def test_declining_keeps_it_always_on_and_waits_for_start_now(self):
         self.start(QMessageBox.StandardButton.No)
         self.kill.assert_not_called()
         self.window._wait_for_roblox_exit.assert_not_called()
-        self.assertFalse(self.window._mr_enabled)
-        self.assertFalse(self.window._mr_enabled_chk.isChecked())
-        self.save.assert_called_once_with("multi_roblox_enabled", False)
+        self.window._finish_start_multi_roblox.assert_not_called()
+        self.assertTrue(self.window._mr_enabled)
+        self.save.assert_not_called()
+        self.window._update_mr_status.assert_called_once()
 
     def test_without_a_running_client_it_continues_straight_away(self):
         with patch.object(ui.actions, "is_roblox_running", return_value=False):

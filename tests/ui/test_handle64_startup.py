@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 
 import shiboken6
 from PySide6.QtCore import QThread, QTimer
-from PySide6.QtWidgets import QApplication, QCheckBox, QMainWindow, QMessageBox, QRadioButton
+from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox, QRadioButton
 
 from utils import splash, ui
 
@@ -17,8 +17,6 @@ class MultiRobloxWindow(ui.AccountManagerUIQt):
         self._admin_restart_pending = False
         self._mr_method = "handle64"
         self._mr_enabled = True
-        self._mr_enabled_chk = QCheckBox(self)
-        self._mr_enabled_chk.setChecked(True)
         self._mr_default_radio = QRadioButton(self)
         self._mr_handle64_radio = QRadioButton(self)
         self._update_mr_status = Mock()
@@ -62,7 +60,6 @@ class Handle64StartupTests(unittest.TestCase):
         self.assertTrue(self.window._admin_restart_pending)
         self.assertFalse(self.window.isVisible())
         self.assertTrue(self.window._mr_enabled)
-        self.assertTrue(self.window._mr_enabled_chk.isChecked())
         self.saved.assert_not_called()
 
     def test_pending_relaunch_does_not_launch_another_copy(self):
@@ -77,8 +74,17 @@ class Handle64StartupTests(unittest.TestCase):
         self.window._finish_start_multi_roblox()
         self.shell.assert_not_called()
         self.quit.assert_not_called()
-        self.assertFalse(self.window._mr_enabled)
-        self.saved.assert_called_once_with("multi_roblox_enabled", False)
+        # Multi Roblox stays always on; the page shows Start Now instead.
+        self.assertTrue(self.window._mr_enabled)
+        self.saved.assert_not_called()
+        self.window._update_mr_status.assert_called()
+
+    def test_multi_roblox_is_always_on_even_if_it_was_turned_off_before(self):
+        with patch.object(ui.actions, "load_ui_settings", return_value={
+            "multi_roblox_method": "default", "multi_roblox_enabled": False,
+        }), patch.object(ui.actions, "find_handle64", return_value=None):
+            self.window._load_mr_settings()
+        self.assertTrue(self.window._mr_enabled)
 
     def test_cancelled_or_failed_elevation_keeps_the_original_open(self):
         self.window.show()

@@ -14,7 +14,9 @@ installation plus légère.
   sélection multiple, import par cookie ou connexion via navigateur.
 - **Lancement** : jeux publics, serveurs privés, serveur précis, plusieurs
   comptes à la suite.
-- **Multi Roblox** : plusieurs clients à la fois (méthode par défaut ou Handle64).
+- **Multi Roblox** : toujours actif, plusieurs clients à la fois (méthode par défaut ou Handle64).
+- **Sauvegarde automatique** : copie chiffrée des comptes à intervalle régulier,
+  restaurable sur n'importe quel PC.
 - **Suivi** : Auto-Rejoin, Anti-AFK, présence et activité des comptes.
 - **Fenêtres** : renommage, grille, masquage des clients Roblox.
 - **Outils** : sélecteur de jeux, liens de serveurs privés, réglages Roblox
@@ -66,8 +68,9 @@ télémétrie ni publicité. Ses requêtes réseau servent aux fonctions utilis�
 API Roblox, vérification des versions sur GitHub, Chromium portable, Handle64,
 et tests de connexion pour Auto-Rejoin.
 
-Le chiffrement DPAPI ne survit pas à une réinstallation de Windows. Fais un
-export de temps en temps (`Settings > Misc > Export Accounts`).
+Le chiffrement DPAPI ne survit pas à une réinstallation de Windows. Active la
+sauvegarde automatique (`Settings > Misc > Automatic Backup`) dans un dossier
+qui y survit, comme OneDrive.
 
 ## Modifications du système
 

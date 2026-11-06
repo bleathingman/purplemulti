@@ -1,5 +1,5 @@
 """
-Roblox Account Manager
+PurpleMulti
 Main entry point for the application.
 """
 
@@ -58,7 +58,7 @@ def resolve_icon_path() -> str | None:
 def _set_app_user_model_id():
     try:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-            "evanovar.robloxaccountmanager.ram"
+            "purplemulti.app"
         )
     except Exception:
         pass
@@ -87,7 +87,7 @@ def main():
             fatal=True,
         )
         diagnostics.show_native_error(
-            "Evanovar RAM Could Not Start",
+            "PurpleMulti Could Not Start",
             "The application encountered an unexpected error.\n\n"
             f"Crash report:\n{crash_path or diagnostics.get_session_log_path()}",
         )

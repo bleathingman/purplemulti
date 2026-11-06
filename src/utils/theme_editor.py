@@ -143,7 +143,7 @@ class ThemeEditor(QWidget):
 
     def _section(self, text, layout):
         label = QLabel(text)
-        bind_style(label, 'color: @RAM_MUTED@; font-size: 9px; font-weight: 700;'
+        bind_style(label, 'color: @RAM_MUTED@; font-size: 11px; font-weight: 700;'
                          ' letter-spacing: 0.5px; margin-top: 8px;')
         layout.addWidget(label)
 
@@ -172,7 +172,7 @@ class ThemeEditor(QWidget):
         save_row.setSpacing(6)
         self.status_label = QLabel()
         self.status_label.setAccessibleName("Theme save status")
-        bind_style(self.status_label, "color: @RAM_MUTED@; font-size: 10px;")
+        bind_style(self.status_label, "color: @RAM_MUTED@; font-size: 12px;")
         save_row.addWidget(self.status_label, 1)
         self.revert_button = self._button("Revert changes", self.revert_changes, save_row)
         self.save_button = self._button("Save theme", lambda: self.save_theme(), save_row)
@@ -183,7 +183,7 @@ class ThemeEditor(QWidget):
         self.library_notice.setWordWrap(True)
         self.library_notice.setTextFormat(Qt.TextFormat.PlainText)
         self.library_notice.setAccessibleName("Theme library notices")
-        bind_style(self.library_notice, "color: @RAM_MUTED@; font-size: 10px;")
+        bind_style(self.library_notice, "color: @RAM_MUTED@; font-size: 12px;")
         layout.addWidget(self.library_notice)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)

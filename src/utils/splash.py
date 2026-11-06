@@ -35,7 +35,7 @@ class StartupSplash(QWidget):
         self.target = None
         self.shimmer = 0.0
         self.setFixedSize(WIDTH, HEIGHT)
-        self.setWindowTitle("Roblox Account Manager")
+        self.setWindowTitle("PurpleMulti")
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self._icon = self._load_icon(icon_paths)
         self._progress_animation = QVariantAnimation(self)
@@ -105,7 +105,7 @@ class StartupSplash(QWidget):
             left += 58
         painter.setPen(QColor(c["TEXT"]))
         painter.setFont(QFont("Segoe UI", 15, QFont.Weight.DemiBold))
-        painter.drawText(left, 55, "Roblox Account Manager")
+        painter.drawText(left, 55, "PurpleMulti")
         painter.setPen(QColor(c["MUTED"]))
         painter.setFont(QFont("Segoe UI", 9))
         painter.drawText(left, 75, f"Version {self.version}")

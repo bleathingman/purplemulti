@@ -12,8 +12,8 @@ from classes.operation_result import OperationResult, unexpected_result
 from utils.app_paths import get_app_dir, get_data_dir, get_resource_path
 
 
-_SHORTCUT_NAME = "Evanovar RAM.lnk"
-_START_MENU_SHORTCUT_NAME = "Roblox Account Manager.lnk"
+_SHORTCUT_NAME = "PurpleMulti.lnk"
+_START_MENU_SHORTCUT_NAME = "PurpleMulti.lnk"
 
 
 def get_startup_folder() -> str:
@@ -114,7 +114,7 @@ def _run_powershell(script: str, kind: str = "Startup") -> OperationResult:
         return OperationResult.failure(
             f"{kind.upper().replace(' ', '_')}_SHORTCUT_CREATE_FAILED",
             f"{kind} Shortcut Could Not Be Created",
-            f"Windows could not create the Evanovar RAM {kind} shortcut.",
+            f"Windows could not create the PurpleMulti {kind} shortcut.",
             detail=detail or f"PowerShell exit code: {completed.returncode}",
         )
     return OperationResult.success()
@@ -177,7 +177,7 @@ def enable_start_menu() -> OperationResult:
         script = _build_shortcut_script(
             shortcut_path,
             launch_result.data,
-            "Roblox Account Manager",
+            "PurpleMulti",
         )
         result = _run_powershell(script, "Start Menu")
         if not result:
@@ -249,7 +249,7 @@ def enable_startup() -> OperationResult:
         script = _build_shortcut_script(
             shortcut_path,
             launch_result.data,
-            "Start Evanovar RAM with Windows",
+            "Start PurpleMulti with Windows",
         )
         result = _run_powershell(script)
         if not result:
@@ -262,11 +262,11 @@ def enable_startup() -> OperationResult:
                 detail=f"Shortcut: {shortcut_path}",
             )
         return OperationResult.success(
-            "Evanovar RAM will start with Windows.",
+            "PurpleMulti will start with Windows.",
             data={"shortcut_path": shortcut_path},
         )
     except Exception as exc:
-        return unexpected_result("Enabling Evanovar RAM at Windows startup", exc)
+        return unexpected_result("Enabling PurpleMulti at Windows startup", exc)
 
 
 def disable_startup() -> OperationResult:
@@ -285,17 +285,17 @@ def disable_startup() -> OperationResult:
             return OperationResult.failure(
                 "STARTUP_SHORTCUT_REMOVE_FAILED",
                 "Startup Shortcut Could Not Be Removed",
-                "Windows did not remove the Evanovar RAM Startup shortcut.",
+                "Windows did not remove the PurpleMulti Startup shortcut.",
                 detail=f"Shortcut: {shortcut_path}",
             )
         return OperationResult.success(
-            "Evanovar RAM will no longer start with Windows.",
+            "PurpleMulti will no longer start with Windows.",
             data={"shortcut_path": shortcut_path},
         )
     except Exception as exc:
         return OperationResult.failure(
             "STARTUP_SHORTCUT_REMOVE_FAILED",
             "Startup Shortcut Could Not Be Removed",
-            "The Evanovar RAM Startup shortcut could not be removed.",
+            "The PurpleMulti Startup shortcut could not be removed.",
             detail=f"{type(exc).__name__}: {exc}",
         )

@@ -19,7 +19,7 @@ DETAILS = {
 
 class ScriptTests(unittest.TestCase):
     def test_values_are_single_quoted_so_dollar_signs_stay_literal(self):
-        script = windows_startup._build_shortcut_script(r"C:\Menu\RAM.lnk", DETAILS, "Roblox Account Manager")
+        script = windows_startup._build_shortcut_script(r"C:\Menu\RAM.lnk", DETAILS, "PurpleMulti")
         self.assertIn(r"$shortcut.TargetPath = 'C:\Apps\Pealz $Tools\RAM.exe';", script)
         self.assertNotIn('"', script)
 
@@ -46,7 +46,7 @@ class StartMenuTests(unittest.TestCase):
         return OperationResult.success(data=DETAILS)
 
     def test_shortcut_lives_in_the_programs_folder(self):
-        self.assertTrue(self.path.endswith(os.path.join("Start Menu", "Programs", "Roblox Account Manager.lnk")))
+        self.assertTrue(self.path.endswith(os.path.join("Start Menu", "Programs", "PurpleMulti.lnk")))
 
     def test_enable_reports_success_only_when_the_shortcut_exists(self):
         def create(script, kind):
@@ -116,7 +116,7 @@ class RealShortcutTests(unittest.TestCase):
             details = {"target": target, "arguments": "", "working_directory": app_dir, "icon_path": ""}
 
             result = windows_startup._run_powershell(
-                windows_startup._build_shortcut_script(shortcut, details, "Roblox Account Manager"),
+                windows_startup._build_shortcut_script(shortcut, details, "PurpleMulti"),
                 "Start Menu",
             )
             self.assertTrue(result, getattr(result, "detail", ""))

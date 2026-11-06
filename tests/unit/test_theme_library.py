@@ -105,11 +105,11 @@ class ThemeLibraryTests(unittest.TestCase):
         self.assertFalse(saved.id.startswith('builtin:'))
         saved.colors['TEXT'] = '#FFFFFF'
         self.assertEqual(self.library.load(saved.id).colors['TEXT'], '#123456')
-        self.assertEqual(model.builtin_theme('default').colors['TEXT'], '#EDEDED')
+        self.assertEqual(model.builtin_theme('default').colors['TEXT'], '#F2EFF9')
         reloaded = self.library.load(saved.id)
         reloaded.set_color('TEXT', '#ABCDEF')
         self.assertEqual(self.library.save(reloaded).id, saved.id)
-        self.assertEqual(reloaded.starting_colors['TEXT'], '#EDEDED')
+        self.assertEqual(reloaded.starting_colors['TEXT'], '#F2EFF9')
 
     def test_colors_regenerate_only_dependent_defaults_and_reset_exact_start(self):
         theme = self.draft()
@@ -117,15 +117,15 @@ class ThemeLibraryTests(unittest.TestCase):
         theme.set_color('ACCENT', '#FF0000')
         self.assertEqual(theme.colors['ACCENT_HOVER'], '#FF2626')
         self.assertEqual(theme.colors['ACCENT_SOFT'], '#112233')
-        self.assertEqual(theme.colors['HOVER'], '#3A3A3A')
+        self.assertEqual(theme.colors['HOVER'], '#3A3546')
         theme.reset_color('ACCENT')
-        self.assertEqual(theme.colors['ACCENT_HOVER'], '#1A8FE0')
+        self.assertEqual(theme.colors['ACCENT_HOVER'], '#9058F0')
         self.assertEqual(theme.colors['ACCENT_SOFT'], '#112233')
         theme.reset_color('ACCENT_SOFT')
-        self.assertEqual(theme.colors['ACCENT_SOFT'], '#3A5A9A')
+        self.assertEqual(theme.colors['ACCENT_SOFT'], '#4A258C')
         self.assertNotIn('ACCENT_SOFT', theme.customized)
         theme.set_color('INPUT', '#FFFFFF')
-        self.assertNotEqual(theme.colors['HOVER'], '#3A3A3A')
+        self.assertNotEqual(theme.colors['HOVER'], '#3A3546')
         with self.assertRaises(model.ThemeError):
             theme.set_color('TEXT', 'red')
 

@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+import ctypes
+import hashlib
 import os
 import tempfile
 import weakref
 
-from PySide6.QtCore import QObject, QPoint, Qt, Signal
-from PySide6.QtGui import QColor, QPainter, QPalette, QPixmap, QPolygon
+from PySide6.QtCore import QEvent, QObject, QPoint, Qt, Signal
+from PySide6.QtGui import QColor, QFont, QGuiApplication, QPainter, QPalette, QPixmap, QPolygon
 from PySide6.QtWidgets import QApplication, QDialog, QMainWindow, QMenu
 from shiboken6 import isValid
 
 from features import settings_store
+from features.color_themes import mix
 from features.theme_library import ThemeLibrary
 from features.theme_model import Theme, validate_theme
 from utils import icons
@@ -22,6 +25,56 @@ STATUS_COLORS = {
     'SUCCESS_SURFACE': '#1E4D1E', 'SUCCESS_BORDER': '#2E6D2E',
 }
 _arrows = {}
+_DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+_DWMWA_WINDOW_CORNER_PREFERENCE = 33
+_DWMWA_CAPTION_COLOR = 35
+_DWMWCP_ROUND = 2
+_TOGGLE = (
+    '<svg xmlns="http://www.w3.org/2000/svg" width="36" height="20" viewBox="0 0 36 20">'
+    '<rect width="36" height="20" rx="10" fill="{track}"/>'
+    '<circle cx="{knob_x}" cy="10" r="7" fill="{knob}"/></svg>'
+)
+
+
+def _svg_asset(svg):
+    name = hashlib.sha256(svg.encode('utf-8')).hexdigest()[:16]
+    path = os.path.join(tempfile.gettempdir(), f'ram_{name}.svg')
+    if not os.path.isfile(path):
+        with open(path, 'w', encoding='utf-8') as handle:
+            handle.write(svg)
+    return path.replace('\\', '/')
+
+
+def _toggle_path(track, knob, knob_x):
+    return _svg_asset(_TOGGLE.format(track=track, knob=knob, knob_x=knob_x))
+
+
+def _soft_tones(colors):
+    base = colors['BG']
+    return {
+        f'{role}_SOFT': mix(base, colors[role], 0.16)
+        for role in ('SUCCESS', 'WARNING', 'ERROR')
+    }
+
+
+def style_window_frame(window, caption):
+    """Match the native title bar and window corners to the theme."""
+    if QGuiApplication.platformName() != 'windows':
+        return
+    try:
+        handle = ctypes.c_void_p(int(window.winId()))
+        color = QColor(caption)
+        for attribute, value in (
+            (_DWMWA_USE_IMMERSIVE_DARK_MODE, 1),
+            (_DWMWA_WINDOW_CORNER_PREFERENCE, _DWMWCP_ROUND),
+            (_DWMWA_CAPTION_COLOR, color.red() | color.green() << 8 | color.blue() << 16),
+        ):
+            data = ctypes.c_int(value)
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                handle, attribute, ctypes.byref(data), ctypes.sizeof(data),
+            )
+    except (AttributeError, OSError, RuntimeError):
+        pass
 
 
 def _arrow_path(value):
@@ -68,10 +121,21 @@ class ThemeManager(QObject):
         self._closed = False
         self._apply_palette()
         self.background.configure(self.theme.background)
+        app.installEventFilter(self)
 
     @property
     def colors(self):
-        return {**STATUS_COLORS, **self.theme.colors}
+        colors = {**STATUS_COLORS, **self.theme.colors}
+        return {**colors, **_soft_tones(colors)}
+
+    def eventFilter(self, watched, event):
+        if (
+            event.type() == QEvent.Type.Show
+            and isinstance(watched, (QMainWindow, QDialog))
+            and not self._closed
+        ):
+            style_window_frame(watched, self.colors['BG'])
+        return False
 
     def register(self, window):
         if self._closed or not isValid(window) or isinstance(window, QMenu):
@@ -97,17 +161,17 @@ class ThemeManager(QObject):
             if isValid(widget):
                 self._update_style(widget, template)
         if colors_changed:
-            for button, (name, size) in list(self._icons.items()):
+            for button, (name, size, tone) in list(self._icons.items()):
                 if isValid(button):
-                    icons.set_button_icon(button, name, self.colors, size)
+                    icons.set_button_icon(button, name, self.colors, size, tone)
             self._placeholder_cache.clear()
-            for label, (size, previous_key) in list(self._placeholders.items()):
+            for label, (size, text, previous_key) in list(self._placeholders.items()):
                 if not isValid(label):
                     continue
                 if label.pixmap().cacheKey() != previous_key:
                     self._placeholders.pop(label, None)
                     continue
-                self.bind_placeholder(label, size)
+                self.bind_placeholder(label, size, text)
         for widget in list(self._paints):
             if isValid(widget):
                 widget.update()
@@ -136,7 +200,15 @@ class ThemeManager(QObject):
         for role in ('PANEL', 'SELECT', 'INPUT'):
             result = result.replace(f'@RAM_OPAQUE_{role}@', palette[role])
         if '@RAM_ARROW@' in result:
-            result = result.replace('@RAM_ARROW@', _arrow_path(palette['TEXT']))
+            result = result.replace('@RAM_ARROW@', _arrow_path(palette['MUTED']))
+        if '@RAM_TOGGLE_' in result:
+            result = result.replace(
+                '@RAM_TOGGLE_ON@', _toggle_path(palette['ACCENT'], palette['ON_ACCENT'], 26)
+            ).replace(
+                '@RAM_TOGGLE_OFF@', _toggle_path(palette['HOVER'], palette['MUTED'], 10)
+            ).replace(
+                '@RAM_TOGGLE_DISABLED@', _toggle_path(palette['INPUT'], palette['LINE'], 10)
+            )
         for role, value in palette.items():
             if media and not opaque and role in surfaces:
                 tint = QColor(value)
@@ -169,9 +241,9 @@ class ThemeManager(QObject):
     def style_template(self, widget):
         return self._styles.get(widget, widget.styleSheet())
 
-    def bind_icon(self, button, name, size=16):
-        self._icons[button] = (name, size)
-        icons.set_button_icon(button, name, self.colors, size)
+    def bind_icon(self, button, name, size=16, tone=None):
+        self._icons[button] = (name, size, tone)
+        icons.set_button_icon(button, name, self.colors, size, tone)
 
     def bind_paint(self, widget):
         self._paints.add(widget)
@@ -182,8 +254,9 @@ class ThemeManager(QObject):
         self._foregrounds[key] = (reference, role)
         item.setForeground(QColor(self.colors[role]))
 
-    def placeholder_pixmap(self, size):
-        if size not in self._placeholder_cache:
+    def placeholder_pixmap(self, size, text=""):
+        key = (size, text)
+        if key not in self._placeholder_cache:
             pixmap = QPixmap(size, size)
             pixmap.fill(Qt.GlobalColor.transparent)
             painter = QPainter(pixmap)
@@ -191,14 +264,21 @@ class ThemeManager(QObject):
             painter.setBrush(QColor(self.colors['SELECT']))
             painter.setPen(Qt.PenStyle.NoPen)
             painter.drawEllipse(0, 0, size, size)
+            if text:
+                font = QFont(painter.font())
+                font.setPixelSize(max(8, round(size * 0.36)))
+                font.setWeight(QFont.Weight.DemiBold)
+                painter.setFont(font)
+                painter.setPen(QColor(self.colors['ACCENT_TEXT']))
+                painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, text)
             painter.end()
-            self._placeholder_cache[size] = pixmap
-        return self._placeholder_cache[size]
+            self._placeholder_cache[key] = pixmap
+        return self._placeholder_cache[key]
 
-    def bind_placeholder(self, label, size):
-        pixmap = self.placeholder_pixmap(size)
+    def bind_placeholder(self, label, size, text=""):
+        pixmap = self.placeholder_pixmap(size, text)
         label.setPixmap(pixmap)
-        self._placeholders[label] = (size, pixmap.cacheKey())
+        self._placeholders[label] = (size, text, pixmap.cacheKey())
 
     def _apply_palette(self):
         c = self.colors
@@ -258,8 +338,8 @@ def bind_style(widget, template):
     get_manager().bind_style(widget, template)
 
 
-def bind_icon(button, name, size=16):
-    get_manager().bind_icon(button, name, size)
+def bind_icon(button, name, size=16, tone=None):
+    get_manager().bind_icon(button, name, size, tone)
 
 
 def bind_paint(widget):
@@ -270,12 +350,12 @@ def bind_foreground(item, role):
     get_manager().bind_foreground(item, role)
 
 
-def bind_placeholder(label, size):
-    get_manager().bind_placeholder(label, size)
+def bind_placeholder(label, size, text=""):
+    get_manager().bind_placeholder(label, size, text)
 
 
-def placeholder_pixmap(size):
-    return get_manager().placeholder_pixmap(size)
+def placeholder_pixmap(size, text=""):
+    return get_manager().placeholder_pixmap(size, text)
 
 
 def palette(app):

@@ -90,7 +90,7 @@ class ThemeRuntimeTests(unittest.TestCase):
         media.background.path = path
         self.manager.apply(media)
         self.assertIn('rgba(', label.styleSheet())
-        self.assertIn('#EDEDED', label.styleSheet())
+        self.assertIn('#F2EFF9', label.styleSheet())
 
     def test_popup_surface_tokens_stay_opaque_under_media(self):
         media = builtin_theme('nord')

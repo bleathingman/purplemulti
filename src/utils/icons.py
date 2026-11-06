@@ -32,6 +32,26 @@ PATHS: dict[str, str] = {
     "enter": '<path d="M5 12h12M13 6l6 6-6 6"/>',
     "resize": '<path d="M8 20L20 8M14 20l6-6M20 20h.01"/>',
     "search": '<circle cx="10.5" cy="10.5" r="6.5"/><path d="M16 16l5 5"/>',
+    "users": (
+        '<circle cx="9" cy="8" r="3.5"/><path d="M3 20c0-3.6 2.7-6 6-6s6 2.4 6 6"/>'
+        '<path d="M15.5 4.8a3.5 3.5 0 0 1 0 6.4M18 14.5c1.8.9 3 2.8 3 5.5"/>'
+    ),
+    "chevron": '<path d="M6 9l6 6 6-6"/>',
+    "minimize": '<path d="M5 12.75h14"/>',
+    "maximize": '<rect x="5" y="5" width="14" height="14" rx="2"/>',
+    "restore": (
+        '<rect x="4" y="8" width="12" height="12" rx="2"/>'
+        '<path d="M8 8V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2"/>'
+    ),
+    "close": '<path d="M6 6l12 12M18 6L6 18"/>',
+    "play": '<path d="M7 5l12 7-12 7z"/>',
+    "stop": '<rect x="6" y="6" width="12" height="12" rx="2"/>',
+    "copy": (
+        '<rect x="9" y="9" width="11" height="11" rx="2"/>'
+        '<path d="M5 15H4a1 1 0 0 1-1-1V5a2 2 0 0 1 2-2h9a1 1 0 0 1 1 1v1"/>'
+    ),
+    "chat": '<path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9l-5 4z"/>',
+    "download": '<path d="M12 4v11M7 10l5 5 5-5"/><path d="M5 20h14"/>',
 }
 
 _cache: dict[tuple, QPixmap] = {}
@@ -40,7 +60,7 @@ _cache: dict[tuple, QPixmap] = {}
 def _svg(name: str, color: str) -> bytes:
     return (
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
-        f'stroke="{color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+        f'stroke="{color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
         f"{PATHS[name]}</svg>"
     ).encode("utf-8")
 
@@ -84,13 +104,16 @@ def make_icon(
     return icon
 
 
-def set_button_icon(button, name: str, colors: dict[str, str], size: int = ICON_SIZE) -> None:
+def set_button_icon(
+    button, name: str, colors: dict[str, str], size: int = ICON_SIZE, tone: str | None = None,
+) -> None:
+    fixed = colors[tone] if tone else None
     button.setIcon(make_icon(
         name,
-        normal=colors["MUTED"],
-        active=colors["TEXT"],
-        checked=colors["ACCENT_TEXT"],
-        disabled=colors["LINE"],
+        normal=fixed or colors["MUTED"],
+        active=fixed or colors["TEXT"],
+        checked=fixed or colors["ACCENT_TEXT"],
+        disabled=fixed or colors["LINE"],
         size=size,
     ))
     button.setIconSize(QSize(size, size))

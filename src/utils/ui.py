@@ -11,7 +11,7 @@ import time
 import webbrowser
 import uuid
 
-from utils import motion, icons, splash, theme_runtime, theme_styles
+from utils import motion, icons, splash, theme_runtime, theme_styles, ui_kit
 from utils.theme_editor import ThemeEditor
 from utils.app_paths import get_app_dir, get_data_dir, get_resource_path
 from utils.version import APP_VERSION
@@ -223,7 +223,7 @@ class _DragDropFilter(QObject):
         self._float_av = av_lbl
 
         name = QLabel(username)
-        theme_runtime.bind_style(name, 'font-size: 12px; font-weight: 600;')
+        theme_runtime.bind_style(name, 'font-size: 13px; font-weight: 600;')
         h.addWidget(name)
 
         win.adjustSize()
@@ -792,22 +792,22 @@ class _DetachablePageHost(QWidget):
 
         message = QLabel(f"{page_name} is open in another window.")
         message.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        theme_runtime.bind_style(message, f'color: {theme_styles.MUTED}; font-size: 11px;')
+        theme_runtime.bind_style(message, f'color: {theme_styles.MUTED}; font-size: 13px;')
         placeholder_layout.addWidget(message)
 
         button_row = QHBoxLayout()
         button_row.addStretch(1)
         self.show_button = QPushButton("Show Window")
-        self.show_button.setFixedHeight(26)
+        self.show_button.setFixedHeight(34)
         theme_runtime.bind_style(self.show_button, f"""
-            QPushButton {{ background: {theme_styles.INPUT}; border: 1px solid {theme_styles.LINE}; color: {theme_styles.TEXT}; padding: 2px 10px; border-radius: 0; }}
+            QPushButton {{ background: {theme_styles.INPUT}; border: 1px solid {theme_styles.LINE}; color: {theme_styles.TEXT}; padding: 2px 10px; }}
             QPushButton:hover {{ background: {theme_styles.SELECT}; }}
             """)
         button_row.addWidget(self.show_button)
         self.reattach_button = QPushButton("Reattach")
-        self.reattach_button.setFixedHeight(26)
+        self.reattach_button.setFixedHeight(34)
         theme_runtime.bind_style(self.reattach_button, f"""
-            QPushButton {{ background: {theme_styles.INPUT}; border: 1px solid {theme_styles.LINE}; color: {theme_styles.TEXT}; padding: 2px 10px; border-radius: 0; }}
+            QPushButton {{ background: {theme_styles.INPUT}; border: 1px solid {theme_styles.LINE}; color: {theme_styles.TEXT}; padding: 2px 10px; }}
             QPushButton:hover {{ background: {theme_styles.SELECT}; }}
             """)
         button_row.addWidget(self.reattach_button)
@@ -862,7 +862,7 @@ class _DetachedPageWindow(QMainWindow):
         self._allow_close = False
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
 
-        self.setWindowTitle(f"{page_name} - Evanovar RAM")
+        self.setWindowTitle(f"{page_name} - PurpleMulti")
         if not icon.isNull():
             self.setWindowIcon(icon)
         theme_runtime.bind_style(self, stylesheet)
@@ -943,6 +943,13 @@ class _ResizeHandle(QSizeGrip):
             event.accept()
             return
         super().keyPressEvent(event)
+
+
+TITLE_BAR_HEIGHT = 40
+MIN_WINDOW_SIZE = (920, 620)
+# Hidden until the donation details are replaced with this build's own
+# (_DONATION_URL / _DONATION_USERNAME and the texts in _build_donations_panel).
+SHOW_DONATIONS_PAGE = False
 
 
 class AccountManagerUIQt(QMainWindow): # Main Window
@@ -1092,7 +1099,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         )
 
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)
-        self.setWindowTitle("Evanovar's Roblox Account Manager")
+        self.setWindowTitle("PurpleMulti")
         self._init_window_size()
         if self._icon_path:
             try:
@@ -1188,18 +1195,18 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         central = QWidget(self)
         self.setCentralWidget(central)
 
-        outer = QVBoxLayout(central)
+        outer = QHBoxLayout(central)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
-        outer.addWidget(self._build_title_bar())
 
         self._page_stack = QStackedWidget()
         self._built_pages = {0, 1, 2, 3, 7}
         self._lazy_page_builders = {
             4: self._build_settings_panel,
             5: self._build_console_panel,
-            6: self._build_donations_panel,
         }
+        if SHOW_DONATIONS_PAGE:
+            self._lazy_page_builders[6] = self._build_donations_panel
 
         for index, page_name in self._page_names.items():
             host = _DetachablePageHost(index, page_name)
@@ -1214,8 +1221,8 @@ class AccountManagerUIQt(QMainWindow): # Main Window
 
         _accounts_page = QWidget()
         _acc_lay = QHBoxLayout(_accounts_page)
-        _acc_lay.setContentsMargins(0, 0, 0, 0)
-        _acc_lay.setSpacing(0)
+        _acc_lay.setContentsMargins(*ui_kit.PAGE_MARGINS)
+        _acc_lay.setSpacing(20)
         _acc_lay.addWidget(self._build_center_panel(), 1)
         _acc_lay.addWidget(self._build_right_panel())
 
@@ -1225,11 +1232,12 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         self._page_hosts[3].set_page(self._build_multi_roblox_panel())
         self._page_stack.addWidget(self._build_setup_panel()) # idx 7
 
-        body = QHBoxLayout()
+        body = QVBoxLayout()
         body.setContentsMargins(0, 0, 0, 0)
         body.setSpacing(0)
-        body.addWidget(self._build_nav_panel())
+        body.addWidget(self._build_title_bar())
         body.addWidget(self._page_stack, 1)
+        outer.addWidget(self._build_nav_panel())
         outer.addLayout(body, 1)
 
         self._resize_handle = _ResizeHandle(central)
@@ -1371,53 +1379,63 @@ class AccountManagerUIQt(QMainWindow): # Main Window
     def _build_title_bar(self) -> QFrame:
         bar = QFrame()
         bar.setObjectName("titleBar")
-        bar.setFixedHeight(32)
+        bar.setFixedHeight(TITLE_BAR_HEIGHT)
 
         lay = QHBoxLayout(bar)
-        lay.setContentsMargins(10, 0, 0, 0)
-        lay.setSpacing(0)
-
-        if self._icon_path:
-            pix = QPixmap(self._icon_path)
-            if not pix.isNull():
-                pm = pix.scaled(16, 16,
-                                Qt.AspectRatioMode.KeepAspectRatio,
-                                Qt.TransformationMode.SmoothTransformation)
-                ico_lbl = QLabel()
-                ico_lbl.setPixmap(pm)
-                ico_lbl.setContentsMargins(0, 6, 8, 6)
-                lay.addWidget(ico_lbl)
-
-        title = QLabel("Evanovar's Roblox Account Manager")
-        title.setObjectName("titleText")
-        lay.addWidget(title)
+        lay.setContentsMargins(0, 0, 8, 0)
+        lay.setSpacing(2)
         lay.addStretch(1)
 
-        min_btn = QPushButton("-")
+        min_btn = QPushButton()
         min_btn.setObjectName("titleButton")
+        min_btn.setToolTip("Minimize")
+        theme_runtime.bind_icon(min_btn, "minimize", size=14)
         min_btn.clicked.connect(self.showMinimized)
         lay.addWidget(min_btn)
 
-        close_btn = QPushButton("x")
+        self._max_btn = QPushButton()
+        self._max_btn.setObjectName("titleButton")
+        self._max_btn.setToolTip("Maximize")
+        theme_runtime.bind_icon(self._max_btn, "maximize", size=14)
+        self._max_btn.clicked.connect(self._toggle_maximized)
+        lay.addWidget(self._max_btn)
+
+        close_btn = QPushButton()
         close_btn.setObjectName("closeButton")
+        close_btn.setToolTip("Close")
+        theme_runtime.bind_icon(close_btn, "close", size=14)
         close_btn.clicked.connect(self.close)
         lay.addWidget(close_btn)
 
         return bar
+
+    def _toggle_maximized(self) -> None:
+        if self.isMaximized():
+            self.showNormal()
+        else:
+            self.showMaximized()
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.WindowStateChange and hasattr(self, "_max_btn"):
+            maximized = self.isMaximized()
+            theme_runtime.bind_icon(self._max_btn, "restore" if maximized else "maximize", size=14)
+            self._max_btn.setToolTip("Restore" if maximized else "Maximize")
+            self._resize_handle.setVisible(not maximized)
 
     def _init_window_size(self) -> None:
         self._window_size_save_timer = QTimer(self)
         self._window_size_save_timer.setSingleShot(True)
         self._window_size_save_timer.setInterval(400)
         self._window_size_save_timer.timeout.connect(self._save_window_size)
-        self.setMinimumSize(640, 520)
+        self.setMinimumSize(*MIN_WINDOW_SIZE)
 
         size = self.minimumSize()
         saved = actions.load_ui_settings().get("main_window_size")
         if (isinstance(saved, list) and len(saved) == 2
                 and all(type(value) is int and value > 0 for value in saved)):
             screen = self.screen()
-            available = screen.availableGeometry().size() if screen else QSize(640, 520)
+            available = screen.availableGeometry().size() if screen else self.minimumSize()
             size = QSize(min(saved[0], available.width()), min(saved[1], available.height()))
             size = size.expandedTo(self.minimumSize())
         self.resize(size)
@@ -1457,7 +1475,8 @@ class AccountManagerUIQt(QMainWindow): # Main Window
 
     # Drag window
     def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton and event.position().y() <= 32:
+        if (event.button() == Qt.MouseButton.LeftButton
+                and event.position().y() <= TITLE_BAR_HEIGHT and not self.isMaximized()):
             self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
             event.accept()
             return
@@ -1474,15 +1493,36 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         self._drag_pos = QPoint()
         super().mouseReleaseEvent(event)
 
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton and event.position().y() <= TITLE_BAR_HEIGHT:
+            self._drag_pos = QPoint()
+            self._toggle_maximized()
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
+
     # Left nav panel
     def _build_nav_panel(self) -> QFrame:
         panel = QFrame()
         panel.setObjectName("navPanel")
-        panel.setFixedWidth(122)
+        panel.setFixedWidth(204)
 
         lay = QVBoxLayout(panel)
-        lay.setContentsMargins(8, 12, 8, 12)
-        lay.setSpacing(10)
+        lay.setContentsMargins(12, 0, 12, 12)
+        lay.setSpacing(2)
+
+        brand = QHBoxLayout()
+        brand.setContentsMargins(6, 12, 6, 18)
+        brand.setSpacing(10)
+        if self._icon_path:
+            brand_icon = QLabel()
+            brand_icon.setPixmap(QIcon(self._icon_path).pixmap(24, 24))
+            brand.addWidget(brand_icon)
+        brand_name = QLabel("PurpleMulti")
+        brand_name.setObjectName("brandName")
+        brand.addWidget(brand_name)
+        brand.addStretch(1)
+        lay.addLayout(brand)
 
         _NAV_PAGES = {
             "Accounts":    0,
@@ -1496,7 +1536,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
 
         self._normal_nav_btns: list[QPushButton] = []
         _nav_icons = {
-            "Accounts": "accounts", "Auto-Rejoin": "refresh", "Anti AFK": "clock",
+            "Accounts": "users", "Auto-Rejoin": "refresh", "Anti AFK": "clock",
             "Multi Roblox": "windows", "Settings": "sliders", "Console": "terminal",
             "Donations": "heart",
         }
@@ -1510,6 +1550,8 @@ class AccountManagerUIQt(QMainWindow): # Main Window
             ("Console", False),
             ("Donations", False),
         ]:
+            if label == "Donations" and not SHOW_DONATIONS_PAGE:
+                continue
             btn = QPushButton(label)
             btn.setObjectName("navTab")
             btn.setCheckable(True)
@@ -1532,8 +1574,16 @@ class AccountManagerUIQt(QMainWindow): # Main Window
                         button.mapToGlobal(pos),
                     )
                 )
+            if label == "Settings":
+                self._nav_gap = lay.count()
+                lay.addSpacing(14)
             lay.addWidget(btn)
             self._normal_nav_btns.append(btn)
+            shortcut_key = f"Ctrl+{len(self._normal_nav_btns)}"
+            btn.setToolTip(f"{label} ({shortcut_key})\nRight-click for window options")
+            QShortcut(QKeySequence(shortcut_key), self, activated=lambda button=btn: (
+                button.click() if button.isVisible() else None
+            ))
 
         # Setup nav button
         self._setup_nav_btn = QPushButton("Setup")
@@ -1552,14 +1602,30 @@ class AccountManagerUIQt(QMainWindow): # Main Window
 
         kill_roblox_button = QPushButton("Kill All Roblox")
         kill_roblox_button.setToolTip("Close every running Roblox process")
-        theme_runtime.bind_icon(kill_roblox_button, "power")
+        theme_runtime.bind_icon(kill_roblox_button, "power", tone="ERROR")
+        ui_kit.set_variant(kill_roblox_button, "danger")
         kill_roblox_button.clicked.connect(self._on_kill_all_roblox)
         lay.addWidget(kill_roblox_button)
+        lay.addSpacing(8)
 
-        ver_lbl = QLabel(f"Version : {APP_VERSION}")
-        ver_lbl.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        theme_runtime.bind_style(ver_lbl, f'color: {theme_styles.MUTED}; font-size: 9px; background: transparent;')
-        lay.addWidget(ver_lbl)
+        footer = QHBoxLayout()
+        footer.setContentsMargins(6, 0, 0, 0)
+        footer.setSpacing(4)
+        ver_lbl = ui_kit.caption(f"Version {APP_VERSION}", wrap=False)
+        footer.addWidget(ver_lbl)
+        footer.addStretch(1)
+
+        discord_btn = QPushButton()
+        discord_btn.setObjectName("discordBtn")
+        discord_btn.setToolTip("Join Discord server")
+        discord_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        ui_kit.set_variant(discord_btn, "icon")
+        theme_runtime.bind_icon(discord_btn, "chat")
+        discord_btn.clicked.connect(
+            lambda: webbrowser.open("https://discord.gg/SZaZU8zwZA")
+        )
+        footer.addWidget(discord_btn)
+        lay.addLayout(footer)
         return panel
 
     def _build_setup_panel(self) -> QWidget: # Encryption setup panel
@@ -1569,21 +1635,11 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         root.setContentsMargins(28, 22, 28, 20)
         root.setSpacing(14)
 
-        hdr = QLabel("Choose your encryption method")
-        theme_runtime.bind_style(hdr, 'font-size: 14px; font-weight: 700;')
-        sub = QLabel(
-            "Your account cookies will be stored locally. "
-            "Choose how they are protected."
-        )
-        theme_runtime.bind_style(sub, f'color: {theme_styles.MUTED}; font-size: 11px;')
-        sub.setWordWrap(True)
-        root.addWidget(hdr)
-        root.addWidget(sub)
-
-        sep = QFrame()
-        sep.setFrameShape(QFrame.Shape.HLine)
-        theme_runtime.bind_style(sep, f'color: {theme_styles.LINE};')
-        root.addWidget(sep)
+        root.addLayout(ui_kit.page_header(
+            "Choose your encryption method",
+            "Your account cookies are stored on this PC. Choose how they are protected. "
+            "You can change this later in Settings > Misc.",
+        ))
 
         self._setup_stack = QStackedWidget()
         root.addWidget(self._setup_stack, 1)
@@ -1593,34 +1649,24 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         choice_lay.setContentsMargins(0, 0, 0, 0)
         choice_lay.setSpacing(10)
 
-        _btn_style = (
-            f'QPushButton {{ background: {theme_styles.INPUT}; color: {theme_styles.TEXT};  border: 1px solid {theme_styles.LINE}; border-radius: 0;  padding: 10px 16px; font-size: 12px; text-align: left; }}QPushButton:hover {{ background: {theme_styles.SELECT}; border-color: {theme_styles.HOVER}; }}QPushButton:checked {{ background: {theme_styles.ACCENT_DEEP}; border-color: {theme_styles.FG_ACCENT}; color: {theme_styles.TEXT}; }}'
-        )
-
         btn_group = QButtonGroup(self)
         btn_group.setExclusive(True)
 
-        self._setup_hw_btn = QPushButton(
-            "Hardware Encryption\n"
-            "   Tied to this PC. No password needed. Not portable."
+        self._setup_hw_btn = ui_kit.option_card(
+            "Windows account encryption",
+            "Uses Windows DPAPI. No password to type, but only this Windows account can open "
+            "the file. Make an export from time to time to keep a portable copy.",
         )
-        self._setup_hw_btn.setCheckable(True)
-        theme_runtime.bind_style(self._setup_hw_btn, _btn_style)
-
-        self._setup_pw_btn = QPushButton(
-            "Password Encryption\n"
-            "   Portable across PCs. No recovery if password is lost."
+        self._setup_pw_btn = ui_kit.option_card(
+            "Password encryption",
+            "Asked at every start. Works on any PC and protects best against other programs, "
+            "but a lost password cannot be recovered.",
         )
-        self._setup_pw_btn.setCheckable(True)
         self._setup_pw_btn.setChecked(True)
-        theme_runtime.bind_style(self._setup_pw_btn, _btn_style)
-
-        self._setup_none_btn = QPushButton(
-            "No Encryption\n"
-            "   Cookies stored in plain text. Not secure."
+        self._setup_none_btn = ui_kit.option_card(
+            "No encryption",
+            "Cookies are stored in plain text. Anyone who copies the file can sign in to your accounts.",
         )
-        self._setup_none_btn.setCheckable(True)
-        theme_runtime.bind_style(self._setup_none_btn, _btn_style)
 
         for b in (self._setup_hw_btn, self._setup_pw_btn, self._setup_none_btn):
             btn_group.addButton(b)
@@ -1631,11 +1677,8 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         cont_row = QHBoxLayout()
         cont_row.addStretch()
         self._setup_continue_btn = QPushButton("Continue")
-        theme_runtime.bind_style(self._setup_continue_btn, f"""
-            QPushButton {{ background: {theme_styles.SELECT}; border: 1px solid {theme_styles.LINE}; min-height: 30px; min-width: 120px; font-weight: 700; text-align: center; color: {theme_styles.TEXT}; border-radius: 0; }}
-            QPushButton:hover {{ background: {theme_styles.HOVER}; }}
-            QPushButton:pressed {{ background: {theme_styles.PRESSED}; }}
-            """)
+        ui_kit.set_variant(self._setup_continue_btn, "primary")
+        self._setup_continue_btn.setMinimumWidth(120)
         cont_row.addWidget(self._setup_continue_btn)
         choice_lay.addLayout(cont_row)
 
@@ -1650,7 +1693,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
             "IMPORTANT: There is NO password recovery.\n"
             "A lost password means permanent data loss."
         )
-        theme_runtime.bind_style(warn, f'color: {theme_styles.NOTE}; font-size: 11px;')
+        theme_runtime.bind_style(warn, f'color: {theme_styles.NOTE}; font-size: 13px;')
         pw_lay.addWidget(warn)
 
         pw_lay.addWidget(QLabel("Enter your password (min. 8 characters):"))
@@ -1666,7 +1709,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         pw_lay.addWidget(self._setup_pw_entry2)
 
         self._setup_pw_err = QLabel("")
-        theme_runtime.bind_style(self._setup_pw_err, 'color: @RAM_ERROR@; font-size: 11px;')
+        theme_runtime.bind_style(self._setup_pw_err, 'color: @RAM_ERROR@; font-size: 13px;')
         pw_lay.addWidget(self._setup_pw_err)
 
         pw_lay.addStretch()
@@ -1675,11 +1718,8 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         pw_btn_row.setSpacing(8)
         pw_back = QPushButton("Back")
         self._setup_pw_confirm_btn = QPushButton("Confirm")
-        theme_runtime.bind_style(self._setup_pw_confirm_btn, f"""
-            QPushButton {{ background: {theme_styles.SELECT}; border: 1px solid {theme_styles.LINE}; min-height: 30px; min-width: 120px; font-weight: 700; text-align: center; color: {theme_styles.TEXT}; border-radius: 0; }}
-            QPushButton:hover {{ background: {theme_styles.HOVER}; }}
-            QPushButton:pressed {{ background: {theme_styles.PRESSED}; }}
-            """)
+        ui_kit.set_variant(self._setup_pw_confirm_btn, "primary")
+        self._setup_pw_confirm_btn.setMinimumWidth(120)
         pw_btn_row.addWidget(pw_back)
         pw_btn_row.addStretch()
         pw_btn_row.addWidget(self._setup_pw_confirm_btn)
@@ -1759,22 +1799,23 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         panel.setObjectName("centerPanel")
 
         lay = QVBoxLayout(panel)
-        lay.setContentsMargins(10, 10, 10, 10)
-        lay.setSpacing(8)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(12)
 
         header_row = QHBoxLayout()
         header_row.setContentsMargins(0, 0, 0, 0)
-        header_row.setSpacing(0)
+        header_row.setSpacing(10)
 
-        section_title = QLabel("Account List")
-        section_title.setObjectName("sectionTitle")
+        section_title = QLabel("Accounts")
+        section_title.setObjectName("pageTitle")
         header_row.addWidget(section_title)
 
+        self._account_count_chip = ui_kit.chip("0", "accent")
+        header_row.addWidget(self._account_count_chip)
         header_row.addStretch(1)
 
         # encryption label
-        self._enc_label = QLabel()
-        self._enc_label.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
+        self._enc_label = ui_kit.chip()
         header_row.addWidget(self._enc_label)
 
         lay.addLayout(header_row)
@@ -1785,6 +1826,11 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         self._account_search.setPlaceholderText("Search accounts (Ctrl+F)")
         self._account_search.setClearButtonEnabled(True)
         self._account_search.setAccessibleName("Search accounts")
+        self._account_search.setFixedHeight(36)
+        self._account_search.addAction(
+            QIcon(icons.pixmap("search", theme_runtime.color("MUTED"))),
+            QLineEdit.ActionPosition.LeadingPosition,
+        )
         self._account_search_timer = QTimer(self)
         self._account_search_timer.setSingleShot(True)
         self._account_search_timer.setInterval(150)
@@ -1801,13 +1847,24 @@ class AccountManagerUIQt(QMainWindow): # Main Window
             activated=self._account_search.clear,
         )
         clear_search.setContext(Qt.ShortcutContext.WidgetShortcut)
-        lay.addWidget(self._account_search)
+        search_row = QHBoxLayout()
+        search_row.setContentsMargins(0, 0, 0, 0)
+        search_row.setSpacing(8)
+        search_row.addWidget(self._account_search, 1)
+        refresh_btn = QPushButton()
+        refresh_btn.setToolTip("Refresh List")
+        refresh_btn.setAccessibleName("Refresh List")
+        ui_kit.set_variant(refresh_btn, "icon")
+        theme_runtime.bind_icon(refresh_btn, "refresh")
+        refresh_btn.clicked.connect(self._refresh_account_list)
+        search_row.addWidget(refresh_btn)
+        lay.addLayout(search_row)
 
         # group section
         self._group_scroll = QScrollArea()
         self._group_scroll.setObjectName("groupScroll")
         self._group_scroll.setWidgetResizable(True)
-        self._group_scroll.setFixedHeight(28)
+        self._group_scroll.setFixedHeight(30)
         self._group_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self._group_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
@@ -1815,7 +1872,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         theme_runtime.bind_style(_group_bar_widget, 'background: transparent;')
         self._group_bar_lay = QHBoxLayout(_group_bar_widget)
         self._group_bar_lay.setContentsMargins(0, 0, 0, 0)
-        self._group_bar_lay.setSpacing(4)
+        self._group_bar_lay.setSpacing(6)
         self._group_scroll.setWidget(_group_bar_widget)
         lay.addWidget(self._group_scroll)
 
@@ -1831,12 +1888,13 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         )
         self._account_list.viewport().installEventFilter(self._drag_filter)
         self._drag_filter.reorder_requested.connect(self._on_account_reorder)
+        self._account_empty = ui_kit.EmptyState(self._account_list)
 
         lay.addWidget(self._account_list, 1)
 
        # Add and Remove buttons row
         bottom = QHBoxLayout()
-        bottom.setSpacing(6)
+        bottom.setSpacing(8)
 
         # Add account button
         self._add_btn = QToolButton()
@@ -1845,13 +1903,11 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         self._add_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self._add_btn.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
         self._add_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self._add_btn.setFixedHeight(26)
+        self._add_btn.setFixedHeight(36)
         theme_runtime.bind_style(self._add_btn, f"""
-            QToolButton {{ background: {theme_styles.INPUT}; border: 1px solid {theme_styles.LINE}; font-size: 11px; min-height: 26px; padding: 2px 28px 2px 8px; text-align: center; color: {theme_styles.TEXT};}}
-            QToolButton:hover {{ background: {theme_styles.SELECT}; }}
-            QToolButton:pressed {{ background: {theme_styles.SELECT}; }}
-            QToolButton::menu-button {{ width: 24px; border-left: 1px solid {theme_styles.LINE}; }}
-            QToolButton::menu-arrow {{ width: 9px; height: 9px; }}
+            QToolButton {{ padding: 0 34px 0 12px; font-weight: 600; }}
+            QToolButton::menu-button {{ width: 28px; border: 0; border-left: 1px solid {theme_styles.LINE}; }}
+            QToolButton::menu-arrow {{ image: url({theme_styles.ARROW}); width: 12px; height: 12px; }}
             """)
 
         # Dropdown menu for add button
@@ -1867,20 +1923,20 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         self._add_btn.setMenu(add_menu)
         self._add_btn.clicked.connect(self._on_add_account_browser)
 
+        note_btn = QPushButton("Edit Note")
+        theme_runtime.bind_icon(note_btn, "pencil")
+        note_btn.setFixedHeight(36)
+        note_btn.clicked.connect(self._on_edit_note)
+
         # Remove Button
         remove_btn = QPushButton("Remove")
-        theme_runtime.bind_icon(remove_btn, "trash")
-        remove_btn.setFixedWidth(86)
-        remove_btn.setFixedHeight(26)
-        remove_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        theme_runtime.bind_style(remove_btn, f"""
-            QPushButton {{ background: {theme_styles.INPUT}; border: 1px solid {theme_styles.LINE}; font-size: 11px; min-height: 26px; padding: 2px 8px; text-align: center; color: {theme_styles.TEXT}; }}
-            QPushButton:hover {{ background: {theme_styles.SELECT}; }}
-            QPushButton:pressed {{ background: {theme_styles.SELECT}; }}
-            """)
+        theme_runtime.bind_icon(remove_btn, "trash", tone="ERROR")
+        ui_kit.set_variant(remove_btn, "danger")
+        remove_btn.setFixedHeight(36)
         remove_btn.clicked.connect(self._on_remove_account)
 
         bottom.addWidget(self._add_btn, 1)
+        bottom.addWidget(note_btn)
         bottom.addWidget(remove_btn)
         bottom.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         lay.addLayout(bottom)
@@ -1892,39 +1948,37 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         panel.setObjectName("centerPanel")
 
         lay = QVBoxLayout(panel)
-        lay.setContentsMargins(10, 10, 10, 10)
-        lay.setSpacing(8)
+        lay.setContentsMargins(*ui_kit.PAGE_MARGINS)
+        lay.setSpacing(14)
 
-        # Header
-        hdr = QHBoxLayout()
-        hdr.setContentsMargins(0, 0, 0, 0)
-        ttl = QLabel("Auto-Rejoin")
-        ttl.setObjectName("sectionTitle")
-        hdr.addWidget(ttl)
-        hdr.addStretch(1)
-        hint = QLabel("Right-click for actions")
-        theme_runtime.bind_style(hint, f'color: {theme_styles.MUTED}; font-size: 9px;')
-        hdr.addWidget(hint)
-        lay.addLayout(hdr)
+        lay.addLayout(ui_kit.page_header(
+            "Auto-Rejoin",
+            "Relaunches an account when its client exits or disconnects. Right-click an entry for actions.",
+        ))
 
         # Account list for auto rejoin
         self._ar_list = QListWidget()
         self._ar_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._ar_list.customContextMenuRequested.connect(self._ar_on_context_menu)
+        self._ar_empty = ui_kit.EmptyState(
+            self._ar_list,
+            "No accounts monitored",
+            "Add an account and a game, and PurpleMulti relaunches it whenever it disconnects.",
+        )
         lay.addWidget(self._ar_list, 1)
         QTimer.singleShot(0, self._ar_refresh_list) # defer
 
         bottom = QHBoxLayout() # Add / Start All / Stop All buttons
-        bottom.setSpacing(6)
-        _BTN_SS = f'QPushButton {{ text-align: center; color: {theme_styles.TEXT}; }}'
+        bottom.setSpacing(8)
         add_btn = QPushButton("Add Account")
-        theme_runtime.bind_style(add_btn, _BTN_SS)
+        theme_runtime.bind_icon(add_btn, "plus", tone="ON_ACCENT")
+        ui_kit.set_variant(add_btn, "primary")
         add_btn.clicked.connect(self._ar_on_add)
         start_all_btn = QPushButton("Start All")
-        theme_runtime.bind_style(start_all_btn, _BTN_SS)
+        theme_runtime.bind_icon(start_all_btn, "play")
         start_all_btn.clicked.connect(self._ar_on_start_all)
         stop_all_btn = QPushButton("Stop All")
-        theme_runtime.bind_style(stop_all_btn, _BTN_SS)
+        theme_runtime.bind_icon(stop_all_btn, "stop")
         stop_all_btn.clicked.connect(self._ar_on_stop_all)
         bottom.addWidget(add_btn, 1)
         bottom.addWidget(start_all_btn)
@@ -1937,160 +1991,95 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         panel.setObjectName("centerPanel")
 
         lay = QVBoxLayout(panel)
-        lay.setContentsMargins(10, 10, 10, 10)
-        lay.setSpacing(8)
+        lay.setContentsMargins(*ui_kit.PAGE_MARGINS)
+        lay.setSpacing(14)
 
-        hdr = QHBoxLayout()
-        hdr.setContentsMargins(0, 0, 0, 0)
-        ttl = QLabel("Anti-AFK")
-        ttl.setObjectName("sectionTitle")
-        hdr.addWidget(ttl)
-        hdr.addStretch(1)
-        self._afk_status_lbl = QLabel("Status: Stopped")
-        theme_runtime.bind_style(self._afk_status_lbl, f'color: {theme_styles.MUTED}; font-size: 11px;')
-        hdr.addWidget(self._afk_status_lbl)
-        lay.addLayout(hdr)
+        self._afk_status_lbl = ui_kit.chip("Status: Stopped")
+        lay.addLayout(ui_kit.page_header(
+            "Anti-AFK",
+            "Sends key presses to all Roblox windows at set intervals to prevent AFK kicks.",
+            self._afk_status_lbl,
+        ))
 
-        desc = QLabel(
-            "Automatically sends key presses to all Roblox windows at set intervals to prevent AFK kicks."
-        )
-        desc.setWordWrap(True)
-        theme_runtime.bind_style(desc, f'color: {theme_styles.MUTED}; font-size: 10px;')
-        lay.addWidget(desc)
-
-        # Enable checkbox
+        enable_card, enable_lay = ui_kit.card()
+        enable_row = QHBoxLayout()
+        enable_row.setContentsMargins(0, 0, 0, 0)
         self._afk_enabled_chk = QCheckBox("Enable Anti-AFK")
-        theme_runtime.bind_style(self._afk_enabled_chk, f'QCheckBox {{ color: {theme_styles.TEXT}; font-size: 12px; font-weight: 700; }}')
         self._afk_enabled_chk.stateChanged.connect(self._on_afk_enabled_changed)
-        lay.addWidget(self._afk_enabled_chk)
-
-        debug_row = QHBoxLayout()
-        debug_row.setContentsMargins(0, 0, 0, 0)
+        enable_row.addWidget(self._afk_enabled_chk)
+        enable_row.addStretch(1)
         self._afk_debug_btn = QPushButton("Trigger Anti-AFK Now")
-        self._afk_debug_btn.setFixedHeight(26)
-        theme_runtime.bind_style(self._afk_debug_btn, f"""
-            QPushButton {{ background: {theme_styles.INPUT}; border: 1px solid {theme_styles.LINE}; color: {theme_styles.TEXT}; padding: 4px 12px; border-radius: 0; }}
-            QPushButton:hover {{ background: {theme_styles.SELECT}; }}
-            QPushButton:disabled {{ color: {theme_styles.MUTED}; }}
-            """)
+        theme_runtime.bind_icon(self._afk_debug_btn, "play")
         self._afk_debug_btn.clicked.connect(self._on_afk_debug_trigger)
-        debug_row.addWidget(self._afk_debug_btn)
-        debug_row.addStretch(1)
-        lay.addLayout(debug_row)
+        enable_row.addWidget(self._afk_debug_btn)
+        enable_lay.addLayout(enable_row)
+        lay.addWidget(enable_card)
 
-        # Settings form
-        form = QVBoxLayout()
-        form.setContentsMargins(0, 8, 0, 0)
-        form.setSpacing(10)
+        lay.addWidget(ui_kit.section_label("Key press"))
+        key_card, key_lay = ui_kit.card()
 
-        # Action Key row
-        row_key = QHBoxLayout()
-        row_key.setSpacing(8)
-        lbl_key = QLabel("Action Key:")
-        theme_runtime.bind_style(lbl_key, f'color: {theme_styles.MUTED}; font-size: 11px; min-width: 80px;')
-        row_key.addWidget(lbl_key)
-
+        key_control = QHBoxLayout()
+        key_control.setContentsMargins(0, 0, 0, 0)
+        key_control.setSpacing(10)
+        self._afk_key_hint = ui_kit.caption("Click to record", wrap=False)
+        self._afk_key_hint.hide()
+        key_control.addWidget(self._afk_key_hint)
         self._afk_key_btn = QPushButton("W")
         self._afk_key_btn.setFixedWidth(100)
-        self._afk_key_btn.setFixedHeight(24)
         self._afk_key_btn.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        theme_runtime.bind_style(self._afk_key_btn, f"""
-            QPushButton {{ background: {theme_styles.INPUT}; border: 1px solid {theme_styles.LINE}; color: {theme_styles.TEXT}; font-size: 11px; font-weight: 700; min-height: 24px; border-radius: 3px; }}
-            QPushButton:hover {{ background: {theme_styles.SELECT}; }}
-            QPushButton:focus {{ border: 1px solid {theme_styles.FG_ACCENT}; }}
-            """)
+        theme_runtime.bind_style(self._afk_key_btn, 'QPushButton { font-weight: 700; }')
         self._afk_key_btn.clicked.connect(self._on_afk_record_key)
-        row_key.addWidget(self._afk_key_btn)
+        key_control.addWidget(self._afk_key_btn)
+        key_lay.addLayout(ui_kit.form_row("Action key", key_control))
 
-        self._afk_key_hint = QLabel("Click to record")
-        theme_runtime.bind_style(self._afk_key_hint, f'color: {theme_styles.NOTE}; font-size: 10px;')
-        self._afk_key_hint.hide()
-        row_key.addWidget(self._afk_key_hint)
-        row_key.addStretch(1)
-        form.addLayout(row_key)
-
-        # Press Count row
-        row_press = QHBoxLayout()
-        row_press.setSpacing(8)
-        lbl_press = QLabel("Press Count:")
-        theme_runtime.bind_style(lbl_press, f'color: {theme_styles.MUTED}; font-size: 11px; min-width: 80px;')
-        row_press.addWidget(lbl_press)
         self._afk_press_spin = QSpinBox()
         self._afk_press_spin.setRange(1, 10)
         self._afk_press_spin.setValue(1)
-        self._afk_press_spin.setFixedWidth(60)
-        theme_runtime.bind_style(self._afk_press_spin, f"""
-            QSpinBox {{ background: {theme_styles.INPUT}; border: 1px solid {theme_styles.LINE}; color: {theme_styles.TEXT}; padding: 4px; border-radius: 3px; }}
-            QSpinBox::up-button, QSpinBox::down-button {{ width: 0; height: 0; border: 0; }}
-            """)
+        self._afk_press_spin.setFixedWidth(100)
+        self._afk_press_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
         self._afk_press_spin.valueChanged.connect(self._on_afk_setting_changed)
-        row_press.addWidget(self._afk_press_spin)
-        row_press.addStretch(1)
-        form.addLayout(row_press)
+        key_lay.addLayout(ui_kit.form_row("Press count", self._afk_press_spin))
 
-        # Interval row
-        row_interval = QHBoxLayout()
-        row_interval.setSpacing(8)
-        lbl_interval = QLabel("Interval (min):")
-        theme_runtime.bind_style(lbl_interval, f'color: {theme_styles.MUTED}; font-size: 11px; min-width: 80px;')
-        row_interval.addWidget(lbl_interval)
         self._afk_interval_spin = QSpinBox()
         self._afk_interval_spin.setRange(1, 120)
         self._afk_interval_spin.setValue(10)
-        self._afk_interval_spin.setFixedWidth(60)
-        theme_runtime.bind_style(self._afk_interval_spin, f"""
-            QSpinBox {{ background: {theme_styles.INPUT}; border: 1px solid {theme_styles.LINE}; color: {theme_styles.TEXT}; padding: 4px; border-radius: 3px; }}
-            QSpinBox::up-button, QSpinBox::down-button {{ width: 0; height: 0; border: 0; }}
-            """)
+        self._afk_interval_spin.setSuffix(" min")
+        self._afk_interval_spin.setFixedWidth(100)
+        self._afk_interval_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
         self._afk_interval_spin.valueChanged.connect(self._on_afk_setting_changed)
-        row_interval.addWidget(self._afk_interval_spin)
-        row_interval.addStretch(1)
-        form.addLayout(row_interval)
+        key_lay.addLayout(ui_kit.form_row("Interval", self._afk_interval_spin))
+        lay.addWidget(key_card)
 
-        # Tooltip checkbox
+        lay.addWidget(ui_kit.section_label("Countdown tooltip"))
+        tooltip_card, tooltip_lay = ui_kit.card()
+
+        tooltip_row = QHBoxLayout()
+        tooltip_row.setContentsMargins(0, 0, 0, 0)
         self._afk_tooltip_chk = QCheckBox("Show countdown tooltip")
         self._afk_tooltip_chk.setChecked(True)
-        theme_runtime.bind_style(self._afk_tooltip_chk, f'QCheckBox {{ color: {theme_styles.MUTED}; font-size: 11px; }}')
         self._afk_tooltip_chk.stateChanged.connect(self._on_afk_setting_changed)
-        form.addWidget(self._afk_tooltip_chk)
-
-        tooltip_preview_row = QHBoxLayout()
-        tooltip_preview_row.setContentsMargins(0, 0, 0, 0)
+        tooltip_row.addWidget(self._afk_tooltip_chk)
+        tooltip_row.addStretch(1)
         self._afk_tooltip_preview_btn = QPushButton("Show Tooltip")
-        self._afk_tooltip_preview_btn.setFixedHeight(26)
-        theme_runtime.bind_style(self._afk_tooltip_preview_btn, f"""
-            QPushButton {{ background: {theme_styles.INPUT}; border: 1px solid {theme_styles.LINE}; color: {theme_styles.TEXT}; padding: 4px 12px; border-radius: 0; }}
-            QPushButton:hover {{ background: {theme_styles.SELECT}; }}
-            """)
         self._afk_tooltip_preview_btn.clicked.connect(
             self._on_afk_tooltip_preview
         )
-        tooltip_preview_row.addWidget(self._afk_tooltip_preview_btn)
-        tooltip_preview_row.addStretch(1)
-        form.addLayout(tooltip_preview_row)
+        tooltip_row.addWidget(self._afk_tooltip_preview_btn)
+        tooltip_lay.addLayout(tooltip_row)
 
-        tooltip_size_row = QHBoxLayout()
-        tooltip_size_row.setSpacing(8)
-        tooltip_size_label = QLabel("Tooltip Size (%):")
-        theme_runtime.bind_style(tooltip_size_label, f'color: {theme_styles.MUTED}; font-size: 11px; min-width: 80px;')
-        tooltip_size_row.addWidget(tooltip_size_label)
         self._afk_tooltip_size_spin = QSpinBox()
         self._afk_tooltip_size_spin.setRange(50, 200)
         self._afk_tooltip_size_spin.setSingleStep(10)
         self._afk_tooltip_size_spin.setValue(100)
-        self._afk_tooltip_size_spin.setFixedWidth(60)
-        theme_runtime.bind_style(self._afk_tooltip_size_spin, f"""
-            QSpinBox {{ background: {theme_styles.INPUT}; border: 1px solid {theme_styles.LINE}; color: {theme_styles.TEXT}; padding: 4px; border-radius: 0; }}
-            QSpinBox::up-button, QSpinBox::down-button {{ width: 0; height: 0; border: 0; }}
-            """)
+        self._afk_tooltip_size_spin.setSuffix(" %")
+        self._afk_tooltip_size_spin.setFixedWidth(100)
+        self._afk_tooltip_size_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
         self._afk_tooltip_size_spin.valueChanged.connect(
             self._on_afk_tooltip_size_changed
         )
-        tooltip_size_row.addWidget(self._afk_tooltip_size_spin)
-        tooltip_size_row.addStretch(1)
-        form.addLayout(tooltip_size_row)
+        tooltip_lay.addLayout(ui_kit.form_row("Tooltip size", self._afk_tooltip_size_spin))
+        lay.addWidget(tooltip_card)
 
-        lay.addLayout(form)
         lay.addStretch(1)
 
         self._load_afk_settings()
@@ -2325,9 +2314,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
 
     def _update_afk_status(self):
         status = "Running" if self._afk_enabled else "Stopped"
-        color = self._AR_ACTIVE_COLOR if self._afk_enabled else self._AR_INACTIVE_COLOR
-        self._afk_status_lbl.setText(f"Status: {status}")
-        theme_runtime.bind_style(self._afk_status_lbl, f'color: {color}; font-size: 11px;')
+        ui_kit.set_chip(self._afk_status_lbl, f"Status: {status}", "success" if self._afk_enabled else "")
         self._afk_debug_btn.setEnabled(self._afk_enabled)
 
     def _save_afk_settings(self):
@@ -2343,97 +2330,66 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         panel.setObjectName("centerPanel")
 
         lay = QVBoxLayout(panel)
-        lay.setContentsMargins(10, 10, 10, 10)
-        lay.setSpacing(8)
+        lay.setContentsMargins(*ui_kit.PAGE_MARGINS)
+        lay.setSpacing(14)
 
-        # Header
-        hdr = QHBoxLayout()
-        hdr.setContentsMargins(0, 0, 0, 0)
-        ttl = QLabel("Multi Roblox")
-        ttl.setObjectName("sectionTitle")
-        hdr.addWidget(ttl)
-        hdr.addStretch(1)
-        self._mr_status_lbl = QLabel("Status: Disabled")
-        theme_runtime.bind_style(self._mr_status_lbl, 'color: @RAM_ERROR@; font-size: 11px;')
-        hdr.addWidget(self._mr_status_lbl)
-        lay.addLayout(hdr)
+        self._mr_status_lbl = ui_kit.chip("Status: Disabled")
+        lay.addLayout(ui_kit.page_header(
+            "Multi Roblox",
+            "Allows multiple Roblox instances to run simultaneously.",
+            self._mr_status_lbl,
+        ))
 
-        desc = QLabel(
-            "Allows multiple Roblox instances to run simultaneously. "
-            "Choose Default (mutex) or Handle64 (Sysinternals) method."
-        )
-        desc.setWordWrap(True)
-        theme_runtime.bind_style(desc, f'color: {theme_styles.MUTED}; font-size: 10px;')
-        lay.addWidget(desc)
-
-        # Enable checkbox
+        enable_card, enable_lay = ui_kit.card()
         self._mr_enabled_chk = QCheckBox("Enable Multi Roblox")
-        theme_runtime.bind_style(self._mr_enabled_chk, f'QCheckBox {{ color: {theme_styles.TEXT}; font-size: 12px; font-weight: 700; }}')
         self._mr_enabled_chk.stateChanged.connect(self._on_mr_enabled_changed)
-        lay.addWidget(self._mr_enabled_chk)
+        enable_lay.addWidget(self._mr_enabled_chk)
+        lay.addWidget(enable_card)
 
-        # Settings form
-        form = QVBoxLayout()
-        form.setContentsMargins(0, 8, 0, 0)
-        form.setSpacing(10)
-
-        # Method row
-        row_method = QHBoxLayout()
-        row_method.setSpacing(8)
-        lbl_method = QLabel("Method:")
-        theme_runtime.bind_style(lbl_method, f'color: {theme_styles.MUTED}; font-size: 11px; min-width: 80px;')
-        row_method.addWidget(lbl_method)
+        lay.addWidget(ui_kit.section_label("Method"))
+        method_card, method_lay = ui_kit.card(spacing=2)
 
         self._mr_default_radio = QRadioButton("Default")
-        theme_runtime.bind_style(self._mr_default_radio, f'QRadioButton {{ color: {theme_styles.TEXT}; font-size: 11px; }}')
         self._mr_default_radio.setToolTip(
             "Uses a Windows mutex (ROBLOX_singletonEvent) to allow multiple\n"
             "Roblox instances. Works without administrator rights.\n"
             "Also applies the Error 773 (cookie lock) fix automatically."
         )
         self._mr_default_radio.toggled.connect(self._on_mr_method_changed)
-        row_method.addWidget(self._mr_default_radio)
+        method_lay.addWidget(self._mr_default_radio)
+        default_hint = ui_kit.caption("Windows mutex. No administrator rights needed.")
+        default_hint.setContentsMargins(24, 0, 0, 0)
+        method_lay.addWidget(default_hint)
+        method_lay.addSpacing(10)
 
         self._mr_handle64_radio = QRadioButton("Handle64")
-        theme_runtime.bind_style(self._mr_handle64_radio, f'QRadioButton {{ color: {theme_styles.TEXT}; font-size: 11px; }}')
         self._mr_handle64_radio.setToolTip(
             "Uses handle64.exe (Sysinternals) to close the singleton handle\n"
             "in each Roblox process as it launches. More reliable but\n"
             "REQUIRES administrator privileges and handle64.exe to be present."
         )
         self._mr_handle64_radio.toggled.connect(self._on_mr_method_changed)
-        row_method.addWidget(self._mr_handle64_radio)
-        row_method.addStretch(1)
-        form.addLayout(row_method)
+        method_lay.addWidget(self._mr_handle64_radio)
+        handle64_hint = ui_kit.caption("Sysinternals tool. More reliable, requires administrator rights.")
+        handle64_hint.setContentsMargins(24, 0, 0, 0)
+        method_lay.addWidget(handle64_hint)
 
-        # Handle64 status row
         row_h64 = QHBoxLayout()
-        row_h64.setSpacing(8)
-        lbl_h64 = QLabel("Handle64:")
-        theme_runtime.bind_style(lbl_h64, f'color: {theme_styles.MUTED}; font-size: 11px; min-width: 80px;')
-        row_h64.addWidget(lbl_h64)
-
-        self._mr_h64_status_lbl = QLabel()
-        theme_runtime.bind_style(self._mr_h64_status_lbl, f'color: {theme_styles.MUTED}; font-size: 10px;')
+        row_h64.setContentsMargins(0, 14, 0, 0)
+        row_h64.setSpacing(10)
+        self._mr_h64_status_lbl = ui_kit.chip()
         row_h64.addWidget(self._mr_h64_status_lbl)
-
+        row_h64.addStretch(1)
         self._mr_dl_btn = QPushButton("Download Handle64")
         self._mr_dl_btn.setToolTip(
             "Downloads handle64.exe from Sysinternals (Microsoft)\n"
             "and saves it to the AccountManagerData folder."
         )
-        self._mr_dl_btn.setFixedHeight(24)
-        theme_runtime.bind_style(self._mr_dl_btn, f"""
-            QPushButton {{ background: {theme_styles.INPUT}; border: 1px solid {theme_styles.LINE}; padding: 2px 8px; font-size: 11px; color: {theme_styles.TEXT}; border-radius: 3px; }}
-            QPushButton:hover {{ background: {theme_styles.SELECT}; }}
-            QPushButton:disabled {{ color: {theme_styles.MUTED}; }}
-            """)
         self._mr_dl_btn.clicked.connect(self._on_mr_download_handle64)
         row_h64.addWidget(self._mr_dl_btn)
-        row_h64.addStretch(1)
-        form.addLayout(row_h64)
+        method_lay.addLayout(row_h64)
+        lay.addWidget(method_card)
 
-        lay.addLayout(form)
         lay.addStretch(1)
 
         # Load saved state
@@ -2480,14 +2436,12 @@ class AccountManagerUIQt(QMainWindow): # Main Window
     def _update_mr_h64_status(self):
         path = actions.find_handle64()
         if path:
-            self._mr_h64_status_lbl.setText("[handle64 found]")
-            theme_runtime.bind_style(self._mr_h64_status_lbl, 'color: @RAM_SUCCESS@; font-size: 10px;')
+            ui_kit.set_chip(self._mr_h64_status_lbl, "handle64 found", "success")
             self._mr_handle64_radio.setEnabled(True)
             self._mr_dl_btn.setText("Downloaded")
             self._mr_dl_btn.setEnabled(False)
         else:
-            self._mr_h64_status_lbl.setText("[handle64 not found]")
-            theme_runtime.bind_style(self._mr_h64_status_lbl, 'color: @RAM_ERROR@; font-size: 10px;')
+            ui_kit.set_chip(self._mr_h64_status_lbl, "handle64 not found", "error")
             self._mr_handle64_radio.setEnabled(False)
             self._mr_dl_btn.setText("Download Handle64")
             self._mr_dl_btn.setEnabled(True)
@@ -2687,11 +2641,9 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         method_str = "Handle64" if getattr(self, "_mr_method", "default") == "handle64" else "Default"
         running = actions.is_multi_roblox_running(getattr(self, "_mr_method", "default"))
         if running:
-            self._mr_status_lbl.setText(f"Status: Running ({method_str})")
-            theme_runtime.bind_style(self._mr_status_lbl, 'color: @RAM_SUCCESS@; font-size: 11px;')
+            ui_kit.set_chip(self._mr_status_lbl, f"Status: Running ({method_str})", "success")
         else:
-            self._mr_status_lbl.setText("Status: Disabled")
-            theme_runtime.bind_style(self._mr_status_lbl, 'color: @RAM_ERROR@; font-size: 11px;')
+            ui_kit.set_chip(self._mr_status_lbl, "Status: Disabled")
 
     def _on_mr_download_handle64(self):
         self._mr_dl_btn.setText("Downloading...")
@@ -2707,22 +2659,17 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         panel = QFrame()
         panel.setObjectName("centerPanel")
 
-        root_lay = QHBoxLayout(panel)
-        root_lay.setContentsMargins(0, 0, 0, 0)
-        root_lay.setSpacing(0)
+        root_lay = QVBoxLayout(panel)
+        root_lay.setContentsMargins(24, 4, 12, 0)
+        root_lay.setSpacing(14)
+        root_lay.addLayout(ui_kit.page_header("Settings"))
 
-        # Left category list
+        # Category tabs
         cat_panel = QFrame()
-        cat_panel.setObjectName('settingsNavSurface')
-        cat_panel.setFixedWidth(120)
-        theme_runtime.bind_style(cat_panel, f'QFrame {{ background: {theme_styles.BG}; border-right: 1px solid {theme_styles.LINE}; }}')
-        cat_lay = QVBoxLayout(cat_panel)
-        cat_lay.setContentsMargins(0, 10, 0, 10)
+        cat_panel.setObjectName("segBar")
+        cat_lay = QHBoxLayout(cat_panel)
+        cat_lay.setContentsMargins(4, 4, 4, 4)
         cat_lay.setSpacing(2)
-
-        cat_header = QLabel("Settings")
-        theme_runtime.bind_style(cat_header, f'color: {theme_styles.MUTED}; font-size: 9px; font-weight: 700; letter-spacing: 0.5px; padding: 0 10px 6px 10px;')
-        cat_lay.addWidget(cat_header)
 
         # Right stacked content
         content_stack = QStackedWidget()
@@ -2739,20 +2686,18 @@ class AccountManagerUIQt(QMainWindow): # Main Window
 
         for i, name in enumerate(CATEGORIES):
             btn = QPushButton(name)
-            btn.setObjectName("navTab")
+            btn.setObjectName("segTab")
             btn.setCheckable(True)
             btn.setChecked(i == 0)
             btn.clicked.connect(lambda _=False, idx=i: _switch_cat(idx))
             cat_lay.addWidget(btn)
             cat_buttons.append(btn)
 
-        cat_lay.addStretch(1)
-
-        root_lay.addWidget(cat_panel)
+        root_lay.addWidget(cat_panel, 0, Qt.AlignmentFlag.AlignLeft)
         root_lay.addWidget(content_stack, 1)
 
         # Shared helpers
-        def _scrollable() -> tuple[QScrollArea, QVBoxLayout]:
+        def _scrollable() -> tuple[QScrollArea, ui_kit.CardFlow]:
             sa = QScrollArea()
             sa.setWidgetResizable(True)
             sa.setFrameShape(QFrame.Shape.NoFrame)
@@ -2761,10 +2706,10 @@ class AccountManagerUIQt(QMainWindow): # Main Window
             w = QWidget()
             theme_runtime.bind_style(w, 'background: transparent;')
             lay = QVBoxLayout(w)
-            lay.setContentsMargins(16, 14, 16, 14)
-            lay.setSpacing(6)
+            lay.setContentsMargins(0, 0, 12, 20)
+            lay.setSpacing(8)
             sa.setWidget(w)
-            return sa, lay
+            return sa, ui_kit.CardFlow(lay)
 
         S = actions.load_ui_settings() # Snapshot for initial values
 
@@ -2783,9 +2728,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
             return cb
 
         def _sec(title: str) -> QLabel:
-            lbl = QLabel(title)
-            theme_runtime.bind_style(lbl, f'color: {theme_styles.MUTED}; font-size: 9px; font-weight: 700; letter-spacing: 0.5px; margin-top: 8px;')
-            return lbl
+            return ui_kit.section_label(title)
 
         def _sub_indent(widget, px=18):
             row = QHBoxLayout()
@@ -2808,7 +2751,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
 
         self._sett_tray_chk = _chk(
             "hide_to_system_tray", "Hide to System Tray",
-            "Keep Evanovar RAM running in the system tray when the main window is closed.\n"
+            "Keep PurpleMulti running in the system tray when the main window is closed.\n"
             "Use the tray icon to show the window again or exit the application.",
             on_change=self._on_sett_tray,
         )
@@ -3010,7 +2953,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         self._sett_startup_chk = QCheckBox("Start with Windows")
         self._sett_startup_chk.setChecked(_startup_enabled)
         self._sett_startup_chk.setToolTip(
-            "Start Evanovar RAM automatically when you sign in to Windows.\n"
+            "Start PurpleMulti automatically when you sign in to Windows.\n"
             "This creates a shortcut in your Windows Startup folder."
         )
         self._sett_startup_chk.stateChanged.connect(self._on_sett_startup)
@@ -3049,7 +2992,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         _launcher_lbl = QLabel(
             "Choose how Roblox is launched when you join a game."
         )
-        theme_runtime.bind_style(_launcher_lbl, f'color: {theme_styles.MUTED}; font-size: 10px;')
+        theme_runtime.bind_style(_launcher_lbl, f'color: {theme_styles.MUTED}; font-size: 12px;')
         _launcher_lbl.setWordWrap(True)
         f.addWidget(_launcher_lbl)
 
@@ -3094,7 +3037,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         )
         _custom_row.addWidget(self._sett_custom_launcher_edit)
         _browse_btn = QPushButton("Browse")
-        _browse_btn.setFixedWidth(60)
+        _browse_btn.setFixedWidth(84)
         _browse_btn.setEnabled(_cur_launcher == "custom")
         _browse_btn.clicked.connect(self._on_sett_browse_launcher)
         _custom_row.addWidget(_browse_btn)
@@ -3249,7 +3192,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         _roblox_downloader_desc = QLabel(
             "Download a Windows Roblox Player deployment directly from Roblox."
         )
-        theme_runtime.bind_style(_roblox_downloader_desc, f'color: {theme_styles.MUTED}; font-size: 10px;')
+        theme_runtime.bind_style(_roblox_downloader_desc, f'color: {theme_styles.MUTED}; font-size: 12px;')
         _roblox_downloader_desc.setWordWrap(True)
         f.addWidget(_roblox_downloader_desc)
 
@@ -3340,20 +3283,13 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         self._sett_roblox_downloader_btn.setToolTip(
             "Download and extract the selected WindowsPlayer deployment."
         )
-        theme_runtime.bind_style(self._sett_roblox_downloader_btn, f"""
-            QPushButton {{ background: {theme_styles.INPUT}; color: {theme_styles.TEXT}; border: 1px solid {theme_styles.LINE}; border-radius: 0; text-align: center; }}
-            QPushButton:hover {{ background: {theme_styles.SELECT}; }}
-            """)
+        theme_runtime.bind_icon(self._sett_roblox_downloader_btn, "download")
         self._sett_roblox_downloader_btn.clicked.connect(
             self._on_sett_download_roblox
         )
         f.addWidget(self._sett_roblox_downloader_btn)
 
-        headless_hdr = QHBoxLayout()
-        headless_hdr.setContentsMargins(0, 0, 0, 0)
-        headless_hdr.addWidget(_sec("HEADLESS MANAGER"))
-        headless_hdr.addStretch(1)
-        f.addLayout(headless_hdr)
+        f.addWidget(_sec("HEADLESS MANAGER"))
 
         self._sett_headless_chk = _chk(
             "headless_manager_enabled", "Enable Headless Manager",
@@ -3404,7 +3340,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         _roblox_settings_desc = QLabel(
             "Close Roblox before applying changes so it does not overwrite them."
         )
-        theme_runtime.bind_style(_roblox_settings_desc, f'color: {theme_styles.MUTED}; font-size: 10px;')
+        theme_runtime.bind_style(_roblox_settings_desc, f'color: {theme_styles.MUTED}; font-size: 12px;')
         _roblox_settings_desc.setWordWrap(True)
         f.addWidget(_roblox_settings_desc)
 
@@ -3532,7 +3468,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
             "Supported browsers: Chrome, Firefox, Edge, and built-in Chromium. "
             "Brave and Opera GX users should select Chromium."
         )
-        theme_runtime.bind_style(_br_lbl, f'color: {theme_styles.MUTED}; font-size: 10px;')
+        theme_runtime.bind_style(_br_lbl, f'color: {theme_styles.MUTED}; font-size: 12px;')
         _br_lbl.setWordWrap(True)
         f.addWidget(_br_lbl)
 
@@ -3685,7 +3621,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         )
         ws_password_row.addWidget(self._sett_ws_password_edit)
         self._sett_ws_password_set_btn = QPushButton("Set")
-        self._sett_ws_password_set_btn.setFixedWidth(60)
+        self._sett_ws_password_set_btn.setFixedWidth(72)
         self._sett_ws_password_set_btn.clicked.connect(
             self._on_sett_ws_password_save
         )
@@ -4400,7 +4336,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         self._headless_status_labels.clear()
 
         AV = avatars.AVATAR_SIZE
-        ITEM_H = AV + 6
+        ITEM_H = AV + 14
 
         if not rows:
             empty = QListWidgetItem(
@@ -4429,7 +4365,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
             av_lbl = QLabel()
             av_lbl.setFixedSize(AV, AV)
             av_lbl.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignHCenter)
-            theme_runtime.bind_placeholder(av_lbl, AV)
+            theme_runtime.bind_placeholder(av_lbl, AV, ui_kit.initials(username or ""))
             row_lay.addWidget(av_lbl)
             self._headless_avatar_labels[pid] = av_lbl
 
@@ -4438,16 +4374,11 @@ class AccountManagerUIQt(QMainWindow): # Main Window
             name_lbl.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
             row_lay.addWidget(name_lbl)
 
-            sep = QLabel("|")
-            sep.setObjectName("noteSep")
-            sep.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-            row_lay.addWidget(sep)
-
             status_str = "hidden" if hidden else "shown"
             status_color = self._HM_HIDDEN_COLOR if hidden else self._HM_SHOWN_COLOR
             status_lbl = QLabel(status_str)
             status_lbl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-            theme_runtime.bind_style(status_lbl, f'color: {status_color}; font-size: 10px;')
+            theme_runtime.bind_style(status_lbl, f'color: {status_color}; font-size: 12px;')
             row_lay.addWidget(status_lbl)
             self._headless_status_labels[pid] = status_lbl
 
@@ -4499,7 +4430,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
             return
         lbl.setText("hidden" if hidden else "shown")
         color = self._HM_HIDDEN_COLOR if hidden else self._HM_SHOWN_COLOR
-        theme_runtime.bind_style(lbl, f'color: {color}; font-size: 10px;')
+        theme_runtime.bind_style(lbl, f'color: {color}; font-size: 12px;')
 
     def _headless_on_context_menu(self, pos):
         item = self._headless_list.itemAt(pos)
@@ -4579,7 +4510,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         theme_runtime.bind_style(dlg, f"""
             QDialog {{ background: {theme_styles.BG}; }}
             QLabel {{ color: {theme_styles.TEXT}; background: transparent; }}
-            QPushButton {{ background: {theme_styles.INPUT}; color: {theme_styles.TEXT}; border: 1px solid {theme_styles.LINE}; border-radius: 0; padding: 6px 14px; font-size: 12px; }}
+            QPushButton {{ background: {theme_styles.INPUT}; color: {theme_styles.TEXT}; border: 1px solid {theme_styles.LINE}; padding: 6px 14px; font-size: 13px; }}
             QPushButton:hover {{ background: {theme_styles.SELECT}; border-color: #444; }}
             QPushButton:disabled {{ color: #666; }}
             """)
@@ -4590,7 +4521,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
 
         # Header
         hdr = QLabel("Update Available")
-        theme_runtime.bind_style(hdr, 'font-size: 15px; font-weight: 700; color: @RAM_TEXT@;')
+        theme_runtime.bind_style(hdr, 'font-size: 17px; font-weight: 700; color: @RAM_TEXT@;')
         lay.addWidget(hdr)
 
         # Version Info Card
@@ -4600,9 +4531,9 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         card_lay.setContentsMargins(14, 10, 14, 10)
         card_lay.setSpacing(4)
         lbl_cur = QLabel(f"Your version is outdated:  v{APP_VERSION}")
-        theme_runtime.bind_style(lbl_cur, f'color: {theme_styles.MUTED}; font-size: 12px;')
+        theme_runtime.bind_style(lbl_cur, f'color: {theme_styles.MUTED}; font-size: 13px;')
         lbl_new = QLabel(f"Latest version:  v{latest_version}")
-        theme_runtime.bind_style(lbl_new, f'color: {theme_styles.ACCENT_TEXT}; font-size: 13px; font-weight: 600;')
+        theme_runtime.bind_style(lbl_new, f'color: {theme_styles.ACCENT_TEXT}; font-size: 14px; font-weight: 600;')
         card_lay.addWidget(lbl_cur)
         card_lay.addWidget(lbl_new)
         lay.addWidget(card)
@@ -4612,7 +4543,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
             notes_view.setReadOnly(True)
             notes_view.setPlainText(notes)
             notes_view.setAccessibleName("Release notes")
-            theme_runtime.bind_style(notes_view, f'QTextEdit {{ background: {theme_styles.INPUT}; color: {theme_styles.TEXT}; border: 1px solid {theme_styles.LINE}; font-size: 11px; }}')
+            theme_runtime.bind_style(notes_view, f'QTextEdit {{ background: {theme_styles.INPUT}; color: {theme_styles.TEXT}; border: 1px solid {theme_styles.LINE}; font-size: 13px; }}')
             lay.addWidget(notes_view, 1)
 
         # Progress download button (mimics chromium bar)
@@ -4622,7 +4553,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
 
         # Status label
         status_lbl = QLabel("")
-        theme_runtime.bind_style(status_lbl, f'color: {theme_styles.MUTED}; font-size: 11px;')
+        theme_runtime.bind_style(status_lbl, f'color: {theme_styles.MUTED}; font-size: 13px;')
         status_lbl.setAlignment(Qt.AlignmentFlag.AlignLeft)
         lay.addWidget(status_lbl)
 
@@ -4747,7 +4678,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
             badge.setVisible(flagged)
         name_label = self._account_name_labels.get(username)
         if name_label is not None:
-            theme_runtime.bind_style(name_label, 'color: @RAM_WARNING@; font-style: italic;' if flagged else '')
+            theme_runtime.bind_style(name_label, 'color: @RAM_WARNING@;' if flagged else '')
             name_label.setToolTip(
                 "Cookie validation received repeated unauthorized responses.\n"
                 "You can still try launching this account."
@@ -4755,7 +4686,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
             )
         row = self._account_rows.get(username)
         if row is not None:
-            theme_runtime.bind_style(row, 'QWidget { background: rgba(200, 50, 50, 0.06); }' if flagged else '')
+            theme_runtime.bind_style(row, '' if flagged else '')
 
     def _is_account_invalid(self, username: str) -> bool:
         data = self.manager.accounts.get(username)
@@ -4984,14 +4915,14 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         button.setToolTip(operation)
         if filled == 0:
             theme_runtime.bind_style(button, f"""
-                QPushButton {{ background: {theme_styles.INPUT}; color: {theme_styles.TEXT}; border: 1px solid {theme_styles.LINE}; border-radius: 0; text-align: center; }}
+                QPushButton {{ background: {theme_styles.INPUT}; color: {theme_styles.TEXT}; border: 1px solid {theme_styles.LINE}; text-align: center; }}
                 """)
             return
 
         stop_a = f"{filled / 100:.4f}"
         stop_b = f"{min(filled / 100 + 0.001, 1.0):.4f}"
         theme_runtime.bind_style(button, f"""
-            QPushButton {{ background: qlineargradient( x1:0, y1:0, x2:1, y2:0, stop:0 {theme_styles.ACCENT_SOFT}, stop:{stop_a} {theme_styles.ACCENT_SOFT}, stop:{stop_b} {theme_styles.INPUT}, stop:1 {theme_styles.INPUT} ); color: {theme_styles.TEXT}; border: 1px solid {theme_styles.LINE}; border-radius: 0; text-align: center;}}
+            QPushButton {{ background: qlineargradient( x1:0, y1:0, x2:1, y2:0, stop:0 {theme_styles.ACCENT_SOFT}, stop:{stop_a} {theme_styles.ACCENT_SOFT}, stop:{stop_b} {theme_styles.INPUT}, stop:1 {theme_styles.INPUT} ); color: {theme_styles.TEXT}; border: 1px solid {theme_styles.LINE}; text-align: center;}}
             """)
 
     def _on_roblox_download_done(
@@ -5010,7 +4941,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
             "Download and extract the selected WindowsPlayer deployment."
         )
         theme_runtime.bind_style(button, f"""
-            QPushButton {{ background: {theme_styles.INPUT}; color: {theme_styles.TEXT}; border: 1px solid {theme_styles.LINE}; border-radius: 0; text-align: center; }}
+            QPushButton {{ background: {theme_styles.INPUT}; color: {theme_styles.TEXT}; border: 1px solid {theme_styles.LINE}; text-align: center; }}
             QPushButton:hover {{ background: {theme_styles.SELECT}; }}
             """)
 
@@ -5432,13 +5363,12 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         self._ar_avatar_labels.clear()
 
         AV = avatars.AVATAR_SIZE
-        ITEM_H = AV + 6
+        ITEM_H = AV + 14
 
+        empty_state = getattr(self, "_ar_empty", None)
+        if empty_state is not None:
+            empty_state.setVisible(not self._ar_configs)
         if not self._ar_configs:
-            empty = QListWidgetItem("No accounts monitored, Press Add Account.")
-            theme_runtime.bind_foreground(empty, 'MUTED')
-            empty.setFlags(empty.flags() & ~Qt.ItemFlag.ItemIsSelectable)
-            self._ar_list.addItem(empty)
             return
 
         for account, cfg in self._ar_configs.items():
@@ -5458,7 +5388,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
             av_lbl = QLabel()
             av_lbl.setFixedSize(AV, AV)
             av_lbl.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignHCenter)
-            theme_runtime.bind_placeholder(av_lbl, AV)
+            theme_runtime.bind_placeholder(av_lbl, AV, ui_kit.initials(account))
             row_lay.addWidget(av_lbl)
             self._ar_avatar_labels[account] = av_lbl
 
@@ -5469,11 +5399,6 @@ class AccountManagerUIQt(QMainWindow): # Main Window
             row_lay.addWidget(name_lbl)
 
             # status
-            sep = QLabel("|")
-            sep.setObjectName("noteSep")
-            sep.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-            row_lay.addWidget(sep)
-
             status_str = "active"   if active else "inactive"
             status_color = self._AR_ACTIVE_COLOR if active else self._AR_INACTIVE_COLOR
             status_detail = self._ar_statuses.get(account, "")
@@ -5484,7 +5409,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
             status_lbl = QLabel(status_str)
             status_lbl.setToolTip(status_detail)
             status_lbl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-            theme_runtime.bind_style(status_lbl, f'color: {status_color}; font-size: 10px;')
+            theme_runtime.bind_style(status_lbl, f'color: {status_color}; font-size: 12px;')
             row_lay.addWidget(status_lbl)
 
             row_lay.addStretch(1)
@@ -5497,7 +5422,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
             pid_lbl = QLabel(destination)
             pid_lbl.setToolTip(destination)
             pid_lbl.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight)
-            theme_runtime.bind_style(pid_lbl, f'color: {theme_styles.MUTED}; font-size: 10px;')
+            theme_runtime.bind_style(pid_lbl, f'color: {theme_styles.MUTED}; font-size: 12px;')
             row_lay.addWidget(pid_lbl)
 
             row.setFixedHeight(ITEM_H)
@@ -5633,7 +5558,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
                             style = child.styleSheet()
                             if "active" in style or "inactive" in style:
                                 child.setText("launching")
-                                theme_runtime.bind_style(child, f'color: {theme_styles.NOTE}; font-size: 10px;')
+                                theme_runtime.bind_style(child, f'color: {theme_styles.NOTE}; font-size: 12px;')
                                 break
                 break
 
@@ -5695,7 +5620,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
             return OperationResult.failure(
                 "SYSTEM_TRAY_UNAVAILABLE",
                 "System Tray Unavailable",
-                "Windows did not provide a system tray for Evanovar RAM.",
+                "Windows did not provide a system tray for PurpleMulti.",
                 detail="QSystemTrayIcon.isSystemTrayAvailable() returned false.",
             )
 
@@ -5710,7 +5635,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
                 )
 
             tray_icon = QSystemTrayIcon(icon, self)
-            tray_icon.setToolTip("Evanovar's Roblox Account Manager")
+            tray_icon.setToolTip("PurpleMulti")
             menu = QMenu(self)
             show_action = QAction("Show UI", self)
             exit_action = QAction("Exit", self)
@@ -5931,24 +5856,22 @@ class AccountManagerUIQt(QMainWindow): # Main Window
     def _build_right_panel(self) -> QFrame: # Right panel actions
         panel = QFrame()
         panel.setObjectName("rightPanel")
-        panel.setFixedWidth(228)
+        panel.setFixedWidth(280)
 
         lay = QVBoxLayout(panel)
-        lay.setContentsMargins(10, 10, 10, 10)
+        lay.setContentsMargins(16, 16, 16, 16)
         lay.setSpacing(8)
 
-        title = QLabel("Actions")
+        title = QLabel("Launch")
         title.setObjectName("sectionTitle")
         lay.addWidget(title)
 
         # Current place label
-        self._game_name_label = QLabel("")
-        theme_runtime.bind_style(self._game_name_label, f'color: {theme_styles.MUTED}; font-size: 11px;')
+        self._game_name_label = ui_kit.caption()
         lay.addWidget(self._game_name_label)
 
         # Place ID
-        place_lbl = QLabel("Place ID")
-        theme_runtime.bind_style(place_lbl, f'color: {theme_styles.MUTED}; font-size: 11px;')
+        place_lbl = ui_kit.field_label("Place ID")
         place_header = QHBoxLayout()
         place_header.setSpacing(6)
         place_header.addWidget(place_lbl)
@@ -5962,7 +5885,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         self._games_selector_btn.setAccessibleName("Open Games Selector")
         self._games_selector_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         theme_runtime.bind_style(self._games_selector_btn, """
-            QPushButton { background: transparent; border: 0; padding: 0; }
+            QPushButton { background: transparent; border: 0; padding: 0; min-height: 0; }
             QPushButton:hover { background: transparent; }
             QPushButton:focus { background: transparent; border: 0; outline: none; }
             """)
@@ -5974,12 +5897,6 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         self._place_id_edit.setEditable(True)
         self._place_id_edit.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self._place_id_edit.lineEdit().setPlaceholderText("e.g. 10449761463") # This game is fun
-        _arrow_path = theme_styles.ARROW
-        theme_runtime.bind_style(self._place_id_edit, f"""
-            QComboBox {{ background: {theme_styles.INPUT}; border: 1px solid {theme_styles.LINE}; color: {theme_styles.TEXT}; padding: 4px 6px; min-height: 24px; }}
-            QComboBox::drop-down {{ border: 0; width: 20px; }}
-            QComboBox::down-arrow {{ image: url({_arrow_path}); width: 10px; height: 10px; }}
-            """)
         self._place_id_edit.currentTextChanged.connect(self._on_place_id_changed)
         self._place_id_edit.activated.connect(self._on_favorite_selected)
         self._favorite_ctx_filter = _ComboRightClickFilter(self)
@@ -5989,31 +5906,23 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         lay.addWidget(self._place_id_edit)
 
         # Private server
-        priv_lbl = QLabel("Private Server Link (Optional)")
-        theme_runtime.bind_style(priv_lbl, f'color: {theme_styles.MUTED}; font-size: 11px;')
+        lay.addSpacing(4)
+        priv_lbl = ui_kit.field_label("Private server link (optional)")
         lay.addWidget(priv_lbl)
 
         self._private_server_edit = _ActionComboBox("Private Server Manager")
         self._private_server_edit.setEditable(True)
         self._private_server_edit.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self._private_server_edit.lineEdit().setPlaceholderText("VIP Link or Link Code")
-        theme_runtime.bind_style(self._private_server_edit, f"""
-            QComboBox {{ background: {theme_styles.INPUT}; border: 1px solid {theme_styles.LINE}; color: {theme_styles.TEXT}; padding: 4px 6px; min-height: 24px; }}
-            QComboBox::drop-down {{ border: 0; width: 20px; }}
-            QComboBox::down-arrow {{ image: url({_arrow_path}); width: 10px; height: 10px; }}
-            """)
         self._private_server_edit.currentTextChanged.connect(self._on_private_server_changed)
         self._private_server_edit.action_requested.connect(self._open_private_server_manager)
         lay.addWidget(self._private_server_edit)
 
         # join button
         join_btn = QPushButton("Join Place ID")
-        theme_runtime.bind_icon(join_btn, "enter")
-        theme_runtime.bind_style(join_btn, f"""
-            QPushButton {{ background: {theme_styles.SELECT}; border: 1px solid {theme_styles.LINE}; min-height: 30px; font-weight: 700; text-align: center; color: {theme_styles.TEXT}; }}
-            QPushButton:hover {{ background: {theme_styles.HOVER}; }}
-            QPushButton:pressed {{ background: {theme_styles.PRESSED}; }}
-            """)
+        theme_runtime.bind_icon(join_btn, "enter", tone="ON_ACCENT")
+        ui_kit.set_variant(join_btn, "primary")
+        join_btn.setFixedHeight(38)
         join_btn.clicked.connect(self._on_join_place)
 
         self._join_menu = QMenu(self)
@@ -6029,73 +5938,40 @@ class AccountManagerUIQt(QMainWindow): # Main Window
 
         self._join_arrow = QToolButton()
         self._join_arrow.setObjectName("splitArrow")
-        self._join_arrow.setText("v")
+        self._join_arrow.setToolTip("More ways to join")
+        theme_runtime.bind_icon(self._join_arrow, "chevron")
         self._join_arrow.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self._join_arrow.setMenu(self._join_menu)
-        self._join_arrow.setFixedWidth(26)
-        self._join_arrow.setFixedHeight(30)
+        self._join_arrow.setFixedWidth(38)
+        self._join_arrow.setFixedHeight(38)
 
+        lay.addSpacing(6)
         join_row = QHBoxLayout()
-        join_row.setSpacing(4)
+        join_row.setSpacing(6)
         join_row.addWidget(join_btn, 1)
         join_row.addWidget(self._join_arrow)
         lay.addLayout(join_row)
 
-        recent_header = QHBoxLayout()
-        recent_header.setContentsMargins(0, 0, 0, 0)
-        recent_header.setSpacing(0)
+        home_btn = QPushButton("Launch Roblox Home")
+        theme_runtime.bind_icon(home_btn, "home")
+        home_btn.clicked.connect(self._on_launch_home)
+        lay.addWidget(home_btn)
 
-        recent_lbl = QLabel("Recent games")
-        theme_runtime.bind_style(recent_lbl, f'color: {theme_styles.MUTED}; font-size: 11px;')
-        recent_header.addWidget(recent_lbl)
-        recent_header.addStretch(1)
-
-        _discord_path = os.path.join(get_data_dir(), "discordlogo.png")
-        if not os.path.exists(_discord_path):
-            _discord_path = get_resource_path("assets", "discordlogo.png")
-        discord_btn = QPushButton()
-        discord_btn.setObjectName("discordBtn")
-        discord_btn.setFixedSize(18, 18)
-        discord_btn.setToolTip("Join Discord server")
-        discord_btn.setFlat(True)
-        discord_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        theme_runtime.bind_style(discord_btn, 'QPushButton#discordBtn { background: transparent; border: 0; padding: 0; }QPushButton#discordBtn:hover { background: transparent; }')
-        if os.path.exists(_discord_path):
-            _dpix = QPixmap(_discord_path).scaled(
-                16, 16,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            )
-            discord_btn.setIcon(QIcon(_dpix))
-            discord_btn.setIconSize(QSize(16, 16))
-        discord_btn.clicked.connect(
-            lambda: webbrowser.open("https://discord.gg/SZaZU8zwZA")
-        )
-        recent_header.addWidget(discord_btn)
-
-        lay.addLayout(recent_header)
-
+        lay.addSpacing(8)
+        lay.addWidget(ui_kit.field_label("Recent games"))
 
         self._recent_list = QListWidget()
-        self._recent_list.setFixedHeight(90)
+        self._recent_list.setObjectName("recentList")
         self._recent_list.itemDoubleClicked.connect(self._on_recent_game_double_click)
         self._recent_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._recent_list.customContextMenuRequested.connect(self._on_recent_game_context_menu)
-        lay.addWidget(self._recent_list)
-
-        # Quick action buttons
-        for label, slot, icon_name in [
-            ("Edit Note",           self._on_edit_note, "pencil"),
-            ("Refresh List",        self._refresh_account_list, "refresh"),
-            ("Launch Roblox Home",  self._on_launch_home, "home"),
-        ]:
-            btn = QPushButton(label)
-            theme_runtime.bind_icon(btn, icon_name)
-            theme_runtime.bind_style(btn, f'QPushButton {{ text-align: center; color: {theme_styles.TEXT}; }}')
-            btn.clicked.connect(slot)
-            lay.addWidget(btn)
-
-        lay.addStretch(1)
+        theme_runtime.bind_style(self._recent_list, f"""
+            QListWidget {{ background: {theme_styles.INPUT}; border-radius: {theme_styles.RADIUS}px; padding: 4px; }}
+            """)
+        self._recent_empty = ui_kit.EmptyState(
+            self._recent_list, "No recent games", "Games you join appear here. Double-click one to fill in its Place ID."
+        )
+        lay.addWidget(self._recent_list, 1)
         return panel
 
     @staticmethod
@@ -6224,20 +6100,22 @@ class AccountManagerUIQt(QMainWindow): # Main Window
                 account_items, search_query, groups.get_assignments()
             )
 
+        ui_kit.set_chip(self._account_count_chip, str(len(account_items)), "accent")
+        empty_state = getattr(self, "_account_empty", None)
+        if empty_state is not None:
+            if search_query:
+                empty_state.set_text("No matching accounts", "Try another name or note, or press Esc to clear the search.")
+            elif self._current_group is not None and self.manager.accounts:
+                empty_state.set_text("This group is empty", "In All, right-click an account and choose Move to Group.")
+            else:
+                empty_state.set_text("No accounts yet", "Use Add Account below to import a cookie or sign in with a browser.")
+            empty_state.setVisible(not account_items)
         if not account_items:
-            item = QListWidgetItem(
-                "No accounts match your search."
-                if search_query
-                else "No accounts, use 'Add Account' to add one."
-            )
-            theme_runtime.bind_foreground(item, 'MUTED')
-            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
-            self._account_list.addItem(item)
             self._rebuild_group_bar()
             return
 
         AV = avatars.AVATAR_SIZE
-        ITEM_H = AV + 6
+        ITEM_H = AV + 14
 
         for username, data in account_items:
             note = data.get("note", "") if isinstance(data, dict) else ""
@@ -6248,8 +6126,8 @@ class AccountManagerUIQt(QMainWindow): # Main Window
 
             row = QWidget()
             row_lay = QHBoxLayout(row)
-            row_lay.setContentsMargins(4, 0, 6, 0)
-            row_lay.setSpacing(6)
+            row_lay.setContentsMargins(6, 0, 10, 0)
+            row_lay.setSpacing(12)
 
             av_container = QWidget()
             av_container.setFixedSize(AV, AV)
@@ -6259,7 +6137,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
             av_lbl.setAlignment(
                 Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignHCenter
             )
-            theme_runtime.bind_placeholder(av_lbl, AV)
+            theme_runtime.bind_placeholder(av_lbl, AV, ui_kit.initials(username))
 
             DOT_SIZE = 6
             RING = 1
@@ -6287,7 +6165,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
             name_lbl.setObjectName("accountName")
             name_lbl.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
             if flagged:
-                theme_runtime.bind_style(name_lbl, 'color: @RAM_WARNING@; font-style: italic;')
+                theme_runtime.bind_style(name_lbl, 'color: @RAM_WARNING@;')
                 name_lbl.setToolTip(
                     "Cookie validation received repeated unauthorized responses.\n"
                     "You can still try launching this account."
@@ -6296,13 +6174,10 @@ class AccountManagerUIQt(QMainWindow): # Main Window
             self._account_name_labels[username] = name_lbl
 
             if note: # Note display
-                sep = QLabel("|")
-                sep.setObjectName("noteSep")
-                sep.setAlignment(Qt.AlignmentFlag.AlignVCenter)
                 note_lbl = QLabel(note)
                 note_lbl.setObjectName("noteText")
                 note_lbl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-                row_lay.addWidget(sep)
+                note_lbl.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
                 row_lay.addWidget(note_lbl)
 
             if activity_enabled:
@@ -6339,7 +6214,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
             row.setFixedHeight(ITEM_H)
 
             if flagged:
-                theme_runtime.bind_style(row, 'QWidget { background: rgba(200, 50, 50, 0.06); }')
+                theme_runtime.bind_style(row, '')
 
             self._account_list.addItem(item)
             self._account_list.setItemWidget(item, row)
@@ -6399,7 +6274,8 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         # + button to add new group
         plus_btn = QPushButton("+")
         plus_btn.setObjectName("groupTab")
-        plus_btn.setFixedWidth(24)
+        plus_btn.setFixedWidth(32)
+        theme_runtime.bind_style(plus_btn, 'QPushButton { padding: 0; }')
         plus_btn.setToolTip("Create new group")
         plus_btn.clicked.connect(self._on_add_group)
         self._group_bar_lay.addWidget(plus_btn)
@@ -6551,6 +6427,9 @@ class AccountManagerUIQt(QMainWindow): # Main Window
             item = QListWidgetItem(label)
             item.setData(Qt.ItemDataRole.UserRole, {"place_id": pid, "private_server": private_server})
             self._recent_list.addItem(item)
+        empty_state = getattr(self, "_recent_empty", None)
+        if empty_state is not None:
+            empty_state.setVisible(self._recent_list.count() == 0)
 
     def _on_recent_game_context_menu(self, pos):
         item = self._recent_list.itemAt(pos)
@@ -6584,9 +6463,9 @@ class AccountManagerUIQt(QMainWindow): # Main Window
             self._private_server_edit.setCurrentText(private_server)
 
     def _update_encryption_badge(self):
-        text, color = actions.get_encryption_status(self.manager)
-        self._enc_label.setText(text)
-        theme_runtime.bind_style(self._enc_label, f'color: {color};')
+        text, _color = actions.get_encryption_status(self.manager)
+        tone = "warning" if "NOT" in text else "success"
+        ui_kit.set_chip(self._enc_label, text.strip("[]").capitalize(), tone if text else "")
 
     def _on_place_id_changed(self, text: str):
         self._game_name_label.setText("")
@@ -7205,7 +7084,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
                 self._session_log_copy_text()
             )
         )
-        theme_runtime.bind_style(dlg, f'QMessageBox {{ background: {theme_styles.BG}; color: {theme_styles.TEXT}; }}')
+        theme_runtime.bind_style(dlg, theme_styles.DIALOG + f'QMessageBox {{ background: {theme_styles.BG}; }}')
         dlg.exec()
 
     # Right-click context menu on account list
@@ -7222,7 +7101,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
 
         menu = QMenu(self)
         theme_runtime.bind_style(menu, f"""
-            QMenu {{ background: {theme_styles.PANEL}; border: 1px solid {theme_styles.LINE}; color: {theme_styles.TEXT}; font-size: 11px; }}
+            QMenu {{ background: {theme_styles.PANEL}; border: 1px solid {theme_styles.LINE}; color: {theme_styles.TEXT}; font-size: 13px; }}
             QMenu::item:selected {{ background: {theme_styles.SELECT}; }}
             QMenu::item:disabled {{ color: {theme_styles.MUTED}; }}
             """)
@@ -7238,7 +7117,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         # Copy Contents submenu
         copy_menu = menu.addMenu("Copy Contents")
         theme_runtime.bind_style(copy_menu, f"""
-            QMenu {{ background: {theme_styles.PANEL}; border: 1px solid {theme_styles.LINE}; color: {theme_styles.TEXT}; font-size: 11px; }}
+            QMenu {{ background: {theme_styles.PANEL}; border: 1px solid {theme_styles.LINE}; color: {theme_styles.TEXT}; font-size: 13px; }}
             QMenu::item:selected {{ background: {theme_styles.SELECT}; }}
             """)
         act_copy_user = copy_menu.addAction("Copy Username")
@@ -7252,7 +7131,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
 
         move_menu = menu.addMenu("Move to Group")
         theme_runtime.bind_style(move_menu, f"""
-            QMenu {{ background: {theme_styles.PANEL}; border: 1px solid {theme_styles.LINE}; color: {theme_styles.TEXT}; font-size: 11px; }}
+            QMenu {{ background: {theme_styles.PANEL}; border: 1px solid {theme_styles.LINE}; color: {theme_styles.TEXT}; font-size: 13px; }}
             QMenu::item:selected {{ background: {theme_styles.SELECT}; }}
             """)
         group_list = groups.get_group_names()
@@ -7352,88 +7231,57 @@ class AccountManagerUIQt(QMainWindow): # Main Window
 
     def _build_donations_panel(self) -> QFrame:
         panel = QFrame()
-        panel.setObjectName("settingsPanel")
+        panel.setObjectName("centerPanel")
 
-        outer = QVBoxLayout(panel)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(0)
-        outer.addStretch(1)
+        lay = QVBoxLayout(panel)
+        lay.setContentsMargins(*ui_kit.PAGE_MARGINS)
+        lay.setSpacing(14)
+        lay.addLayout(ui_kit.page_header(
+            "Support the creator",
+            "PurpleMulti is a personal build of Evanovar RAM, the open source account manager "
+            "made by evanovar. Donations go to the original creator.",
+        ))
 
-        card = QFrame()
-        card.setObjectName("donationCard")
-        theme_runtime.bind_style(card, f"""
-            #donationCard {{ background: {theme_styles.PANEL}; border: 1px solid {theme_styles.LINE}; border-radius: 10px; }}
-            """)
-        card.setMaximumWidth(420)
-        card.setSizePolicy(
-            QSizePolicy.Policy.Preferred,
-            QSizePolicy.Policy.Minimum,
-        )
+        def _copy_button(label: str, value: str, primary: bool) -> QPushButton:
+            button = QPushButton(label)
+            theme_runtime.bind_icon(button, "copy", tone="ON_ACCENT" if primary else None)
+            if primary:
+                ui_kit.set_variant(button, "primary")
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        card_lay = QVBoxLayout(card)
-        card_lay.setContentsMargins(32, 32, 32, 32)
-        card_lay.setSpacing(18)
-        card_lay.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+            def _copy():
+                QApplication.clipboard().setText(value)
+                button.setText("Copied")
+                QTimer.singleShot(2000, lambda: button.setText(label))
 
+            button.clicked.connect(_copy)
+            return button
 
-        title_lbl = QLabel("Support the Creator")
-        title_lbl.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        theme_runtime.bind_style(title_lbl, f'font-size: 15px; font-weight: 700; color: {theme_styles.TEXT}; background: transparent;')
-        card_lay.addWidget(title_lbl)
+        options = [
+            ("Donation game", "Buy a pass in the donation game's store. Copy the link and open it in your browser.",
+             _copy_button("Copy Link", self._DONATION_URL, True)),
+            ("Roblox username", "Send Robux through a Plus donation to the creator's account.",
+             _copy_button("Copy Username", self._DONATION_USERNAME, False)),
+        ]
+        for title, description, button in options:
+            frame, card_lay = ui_kit.card()
+            row = QHBoxLayout()
+            row.setSpacing(16)
+            text = QVBoxLayout()
+            text.setSpacing(2)
+            heading = QLabel(title)
+            heading.setObjectName("sectionTitle")
+            text.addWidget(heading)
+            text.addWidget(ui_kit.caption(description))
+            row.addLayout(text, 1)
+            row.addWidget(button, 0, Qt.AlignmentFlag.AlignVCenter)
+            card_lay.addLayout(row)
+            lay.addWidget(frame)
 
-        desc_lbl = QLabel("Support the creator by donating via Robux!")
-        desc_lbl.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        desc_lbl.setWordWrap(True)
-        theme_runtime.bind_style(desc_lbl, f'font-size: 11px; color: {theme_styles.MUTED}; background: transparent;')
-        card_lay.addWidget(desc_lbl)
-
-        copy_btn = QPushButton("Copy Link")
-        copy_btn.setFixedHeight(34)
-        copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        theme_runtime.bind_style(copy_btn, f"""
-            QPushButton {{ background: {theme_styles.FG_ACCENT}; color: {theme_styles.ON_ACCENT}; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; }}
-            QPushButton:hover {{ background: {theme_styles.ACCENT_HOVER}; }}
-            QPushButton:pressed {{ background: {theme_styles.ACCENT_PRESSED}; }}
-            """)
-
-        def _copy_link():
-            QApplication.clipboard().setText(self._DONATION_URL)
-            copy_btn.setText("Copied!")
-            QTimer.singleShot(2000, lambda: copy_btn.setText("Copy Link"))
-
-        copy_btn.clicked.connect(_copy_link)
-        card_lay.addWidget(copy_btn)
-
-        plus_lbl = QLabel("Or donate robux via plus")
-        plus_lbl.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        plus_lbl.setWordWrap(True)
-        theme_runtime.bind_style(plus_lbl, f'font-size: 11px; color: {theme_styles.MUTED}; background: transparent;')
-        card_lay.addWidget(plus_lbl)
-
-        copy_user_btn = QPushButton("Copy Username")
-        copy_user_btn.setFixedHeight(34)
-        copy_user_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        theme_runtime.bind_style(copy_user_btn, f"""
-            QPushButton {{ background: {theme_styles.FG_ACCENT}; color: {theme_styles.ON_ACCENT}; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; }}
-            QPushButton:hover {{ background: {theme_styles.ACCENT_HOVER}; }}
-            QPushButton:pressed {{ background: {theme_styles.ACCENT_PRESSED}; }}
-            """)
-
-        def _copy_username():
-            QApplication.clipboard().setText(self._DONATION_USERNAME)
-            copy_user_btn.setText("Copied!")
-            QTimer.singleShot(2000, lambda: copy_user_btn.setText("Copy Username"))
-
-        copy_user_btn.clicked.connect(_copy_username)
-        card_lay.addWidget(copy_user_btn)
-
-        h = QHBoxLayout()
-        h.addStretch(1)
-        h.addWidget(card)
-        h.addStretch(1)
-        outer.addLayout(h)
-
-        outer.addStretch(1)
+        lay.addWidget(ui_kit.caption(
+            "Source code and releases: github.com/evanovar/RobloxAccountManager (GPL-3.0)."
+        ))
+        lay.addStretch(1)
         return panel
 
     def _build_console_panel(self) -> QFrame: # Console panel
@@ -7441,45 +7289,34 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         panel.setObjectName("centerPanel")
 
         lay = QVBoxLayout(panel)
-        lay.setContentsMargins(10, 10, 10, 10)
-        lay.setSpacing(8)
+        lay.setContentsMargins(*ui_kit.PAGE_MARGINS)
+        lay.setSpacing(14)
 
-        hdr = QHBoxLayout()
-        hdr.setContentsMargins(0, 0, 0, 0)
-        ttl = QLabel("Console")
-        ttl.setObjectName("sectionTitle")
-        hdr.addWidget(ttl)
-        hdr.addStretch(1)
-        lay.addLayout(hdr)
+        actions_row = QWidget()
+        btn_row = QHBoxLayout(actions_row)
+        btn_row.setSpacing(8)
+        btn_row.setContentsMargins(0, 0, 0, 0)
+        lay.addLayout(ui_kit.page_header("Console", trailing=actions_row))
 
         self._console_view = QTextEdit()
         self._console_view.setReadOnly(True)
         self._console_view.document().setMaximumBlockCount(3000)
         theme_runtime.bind_style(self._console_view, f"""
-            QTextEdit {{ background: {theme_styles.INPUT}; border: 1px solid {theme_styles.LINE}; color: {theme_styles.TEXT}; font-family: Consolas, 'Courier New', monospace; font-size: 11px; padding: 4px;}}
+            QTextEdit {{ background: {theme_styles.PANEL}; border-radius: {theme_styles.RADIUS_CARD}px; font-family: Consolas, 'Courier New', monospace; font-size: 13px; padding: 10px; }}
             """)
         lay.addWidget(self._console_view, 1)
 
-        _BTN_STYLE = (
-            f'QPushButton {{  background: {theme_styles.INPUT}; border: 1px solid {theme_styles.LINE};  color: {theme_styles.TEXT}; font-size: 11px; min-height: 26px; padding: 2px 8px;}}QPushButton:hover   {{ background: {theme_styles.SELECT}; }}QPushButton:pressed {{ background: {theme_styles.SELECT}; }}'
-        )
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(6)
-        btn_row.setContentsMargins(0, 0, 0, 0)
-
         copy_btn = QPushButton("Copy")
-        theme_runtime.bind_style(copy_btn, _BTN_STYLE)
+        theme_runtime.bind_icon(copy_btn, "copy")
         copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(
             self._console_view.toPlainText()
         ))
         btn_row.addWidget(copy_btn)
 
         clr_btn = QPushButton("Clear")
-        theme_runtime.bind_style(clr_btn, _BTN_STYLE)
+        theme_runtime.bind_icon(clr_btn, "trash")
         clr_btn.clicked.connect(self._console_view.clear)
         btn_row.addWidget(clr_btn)
-
-        lay.addLayout(btn_row)
 
         return panel
 
@@ -7612,7 +7449,7 @@ class _GamesSelectorDialog(QDialog):
         buttons.addWidget(close)
         self.apply = QPushButton("Apply to Field")
         self.apply.setEnabled(False)
-        theme_runtime.bind_style(self.apply, f'QPushButton {{ background: {theme_styles.SELECT}; font-weight: 600; }}')
+        ui_kit.set_variant(self.apply, "primary")
         buttons.addWidget(self.apply)
         layout.addLayout(buttons)
         self._search_timer = QTimer(self)
@@ -7834,10 +7671,10 @@ class _AccountCreatorDialog(QDialog):
         self.setWindowTitle("Account Creator")
         self.setFixedSize(540, 320)
         theme_runtime.bind_style(self, theme_styles.DIALOG + f"""
-            QTabWidget::pane {{ background: {theme_styles.PANEL}; border: 1px solid {theme_styles.LINE}; border-radius: 0; }}
-            QTabBar::tab {{ background: {theme_styles.INPUT}; color: {theme_styles.MUTED}; border: 1px solid {theme_styles.LINE}; border-bottom: none; border-radius: 0; min-width: 80px; min-height: 24px; padding: 2px 10px; }}
+            QTabWidget::pane {{ background: {theme_styles.PANEL}; border: 1px solid {theme_styles.LINE}; }}
+            QTabBar::tab {{ background: {theme_styles.INPUT}; color: {theme_styles.MUTED}; border: 1px solid {theme_styles.LINE}; border-bottom: none; min-width: 80px; min-height: 32px; padding: 2px 10px; }}
             QTabBar::tab:selected {{ background: {theme_styles.SELECT}; color: {theme_styles.TEXT}; }}
-            QSpinBox {{ background: {theme_styles.INPUT}; color: {theme_styles.TEXT}; border: 1px solid {theme_styles.LINE}; border-radius: 0; min-height: 24px; padding: 2px 6px; }}
+            QSpinBox {{ background: {theme_styles.INPUT}; color: {theme_styles.TEXT}; border: 1px solid {theme_styles.LINE}; min-height: 32px; padding: 2px 6px; }}
             """)
 
         lay = QVBoxLayout(self)
@@ -7845,7 +7682,7 @@ class _AccountCreatorDialog(QDialog):
         lay.setSpacing(10)
 
         title = QLabel("Create Roblox Accounts")
-        theme_runtime.bind_style(title, f'color: {theme_styles.TEXT}; font-size: 13px; font-weight: 700;')
+        theme_runtime.bind_style(title, f'color: {theme_styles.TEXT}; font-size: 14px; font-weight: 700;')
         lay.addWidget(title)
 
         warning = QLabel(
@@ -7853,7 +7690,7 @@ class _AccountCreatorDialog(QDialog):
             "bypass Roblox CAPTCHA protection."
         )
         warning.setWordWrap(True)
-        theme_runtime.bind_style(warning, f'color: {theme_styles.NOTE}; font-size: 10px;')
+        theme_runtime.bind_style(warning, f'color: {theme_styles.NOTE}; font-size: 12px;')
         lay.addWidget(warning)
 
         tabs = QTabWidget()
@@ -7895,7 +7732,7 @@ class _AccountCreatorDialog(QDialog):
         advanced_desc.setAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
         )
-        theme_runtime.bind_style(advanced_desc, f'color: {theme_styles.MUTED}; font-size: 10px;')
+        theme_runtime.bind_style(advanced_desc, f'color: {theme_styles.MUTED}; font-size: 12px;')
         advanced_lay.addWidget(advanced_desc)
 
         self._enable_prefix_chk = QCheckBox("Enable Custom Prefix")
@@ -7996,7 +7833,7 @@ class _ImportUserPassDialog(QDialog):
         lay.addWidget(QLabel("Import Accounts from Username:Password"))
         desc = QLabel("Enter one account per row, or import a .txt file of Username:Password lines.")
         desc.setWordWrap(True)
-        theme_runtime.bind_style(desc, f'color: {theme_styles.MUTED}; font-size: 10px;')
+        theme_runtime.bind_style(desc, f'color: {theme_styles.MUTED}; font-size: 12px;')
         lay.addWidget(desc)
 
         self._rows_scroll = QScrollArea()
@@ -8186,15 +8023,7 @@ class _AutoRejoinAddWindow(QDialog):
         self.setWindowTitle("Edit Auto-Rejoin" if self._edit_mode else "Add Account to Auto-Rejoin")
         self.setMinimumSize(420 if self._edit_mode else 740, 480)
         self.resize(440 if self._edit_mode else 800, 600)
-        theme_runtime.bind_style(self, theme_styles.DIALOG + f"""
-            QListWidget {{ background: {theme_styles.INPUT}; border: 1px solid {theme_styles.LINE}; font-size: 11px; color: {theme_styles.TEXT}; }}
-            QListWidget::item:selected {{ background: {theme_styles.SELECT}; }}
-            QLabel#accountName {{ color: {theme_styles.TEXT}; font-size: 11px; }}
-            QLabel#noteSep {{ color: @RAM_MUTED@; font-size: 11px; }}
-            QLabel#noteText {{ color: {theme_styles.NOTE}; font-size: 11px; font-weight: 600; }}
-            QPushButton#groupTab {{ background: transparent; border: 1px solid {theme_styles.LINE}; color: {theme_styles.MUTED}; font-size: 10px; padding: 2px 8px; min-height: 20px; }}
-            QPushButton#groupTab:checked {{ background: {theme_styles.SELECT}; color: {theme_styles.TEXT}; }}
-            QPushButton#groupTab:hover {{ background: {theme_styles.SELECT}; }}
+        theme_runtime.bind_style(self, theme_styles.DIALOG + """
             """)
 
         root = QVBoxLayout(self)
@@ -8205,13 +8034,14 @@ class _AutoRejoinAddWindow(QDialog):
         title_row = QHBoxLayout()
         title_row.setContentsMargins(0, 0, 0, 0)
         lbl = QLabel("Edit Auto-Rejoin" if self._edit_mode else "Add Account to Auto-Rejoin")
-        theme_runtime.bind_style(lbl, f'color: {theme_styles.TEXT}; font-size: 13px; font-weight: bold;')
+        theme_runtime.bind_style(lbl, f'color: {theme_styles.TEXT}; font-size: 14px; font-weight: bold;')
         title_row.addWidget(lbl)
         title_row.addStretch(1)
         close_btn = QPushButton("\u2715")
         close_btn.setFixedSize(22, 22)
+        close_btn.setMinimumHeight(0)
         theme_runtime.bind_style(close_btn, f"""
-            QPushButton {{ background: transparent; border: none; color: {theme_styles.MUTED}; font-size: 13px; }}
+            QPushButton {{ background: transparent; border: none; color: {theme_styles.MUTED}; font-size: 14px; }}
             QPushButton:hover {{ color: {theme_styles.TEXT}; }}
             """)
         close_btn.clicked.connect(self.reject)
@@ -8220,7 +8050,7 @@ class _AutoRejoinAddWindow(QDialog):
 
         # Sub-title hint directly below the title
         self._hint_label = QLabel("Ctrl / Shift to select multiple accounts")
-        theme_runtime.bind_style(self._hint_label, f'color: {theme_styles.MUTED}; font-size: 11px;')
+        theme_runtime.bind_style(self._hint_label, f'color: {theme_styles.MUTED}; font-size: 13px;')
 
         body = QHBoxLayout()
         body.setContentsMargins(0, 0, 0, 0)
@@ -8232,7 +8062,7 @@ class _AutoRejoinAddWindow(QDialog):
         left.setContentsMargins(0, 0, 0, 0)
         left.setSpacing(8)
         accounts_title = QLabel("Accounts")
-        theme_runtime.bind_style(accounts_title, f'color: {theme_styles.TEXT}; font-size: 12px; font-weight: 600;')
+        theme_runtime.bind_style(accounts_title, f'color: {theme_styles.TEXT}; font-size: 13px; font-weight: 600;')
         left.addWidget(accounts_title)
         left.addWidget(self._hint_label)
 
@@ -8267,33 +8097,33 @@ class _AutoRejoinAddWindow(QDialog):
         right.setSpacing(10)
         right.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        _LBL = f'color: {theme_styles.MUTED}; font-size: 11px;'
+        _LBL = f'color: {theme_styles.MUTED}; font-size: 13px;'
         _INP = (
-            f'QLineEdit {{ background: {theme_styles.INPUT}; border: 1px solid {theme_styles.LINE}; color: {theme_styles.TEXT}; padding: 4px 6px; min-height: 24px; font-size: 11px; }}'
+            f'QLineEdit {{ background: {theme_styles.INPUT}; border: 1px solid {theme_styles.LINE}; color: {theme_styles.TEXT}; padding: 0 10px; min-height: 32px; font-size: 13px; }}'
         )
         _SPN = (
-            f'QSpinBox {{ background: {theme_styles.INPUT}; border: 1px solid {theme_styles.LINE}; color: {theme_styles.TEXT}; padding: 4px 6px; min-height: 24px; font-size: 11px; }}'
+            f'QSpinBox {{ background: {theme_styles.INPUT}; border: 1px solid {theme_styles.LINE}; color: {theme_styles.TEXT}; padding: 0 10px; min-height: 32px; font-size: 13px; }}'
         )
         _CHK = (
-            f'QCheckBox {{ color: {theme_styles.TEXT}; font-size: 11px; }}QCheckBox::indicator {{ width: 13px; height: 13px; }}'
+            f'QCheckBox {{ color: {theme_styles.TEXT}; font-size: 13px; }}'
         )
 
         # Account label for edit mode
         self._account_lbl = QLabel(f"Account: {edit_account}" if self._edit_mode else "")
         self._account_lbl.setWordWrap(True)
-        theme_runtime.bind_style(self._account_lbl, f'color: {theme_styles.MUTED}; font-size: 11px;')
+        theme_runtime.bind_style(self._account_lbl, f'color: {theme_styles.MUTED}; font-size: 13px;')
         self._account_lbl.setVisible(self._edit_mode)
         right.addWidget(self._account_lbl)
 
         cfg_hdr = QLabel("Destination")
-        theme_runtime.bind_style(cfg_hdr, f'color: {theme_styles.TEXT}; font-size: 12px; font-weight: 600;')
+        theme_runtime.bind_style(cfg_hdr, f'color: {theme_styles.TEXT}; font-size: 13px; font-weight: 600;')
         right.addWidget(cfg_hdr)
         self._join_mode = QComboBox()
         self._join_mode.addItem("Join a place", "place")
         self._join_mode.addItem("Join a user", "user")
         self._join_mode.setAccessibleName("Auto-Rejoin destination type")
         theme_runtime.bind_style(self._join_mode, f"""
-            QComboBox {{ background: {theme_styles.INPUT}; border: 1px solid {theme_styles.LINE}; color: {theme_styles.TEXT}; padding: 4px 6px; min-height: 24px; font-size: 11px; }}
+            QComboBox {{ background: {theme_styles.INPUT}; border: 1px solid {theme_styles.LINE}; color: {theme_styles.TEXT}; padding: 0 10px; min-height: 32px; font-size: 13px; }}
             """)
         right.addWidget(self._join_mode)
 
@@ -8345,7 +8175,7 @@ class _AutoRejoinAddWindow(QDialog):
         theme_runtime.bind_style(divider, f'background: {theme_styles.LINE}; border: none;')
         right.addWidget(divider)
         monitoring_title = QLabel("Monitoring")
-        theme_runtime.bind_style(monitoring_title, f'color: {theme_styles.TEXT}; font-size: 12px; font-weight: 600;')
+        theme_runtime.bind_style(monitoring_title, f'color: {theme_styles.TEXT}; font-size: 13px; font-weight: 600;')
         right.addWidget(monitoring_title)
 
         row1 = QHBoxLayout()
@@ -8417,11 +8247,7 @@ class _AutoRejoinAddWindow(QDialog):
         # Add account if add mode
         self._add_btn = QPushButton("Save Changes" if self._edit_mode else "Add Account")
         self._add_btn.setDefault(True)
-        theme_runtime.bind_style(self._add_btn, f"""
-            QPushButton {{ background: {theme_styles.SELECT}; border: 1px solid {theme_styles.LINE}; min-height: 30px; font-weight: 700; text-align: center; color: {theme_styles.TEXT}; }}
-            QPushButton:hover {{ background: {theme_styles.HOVER}; }}
-            QPushButton:pressed {{ background: {theme_styles.PRESSED}; }}
-            """)
+        ui_kit.set_variant(self._add_btn, "primary")
         self._add_btn.clicked.connect(self._on_add)
         footer.addWidget(self._add_btn)
         root.addLayout(footer)
@@ -8503,7 +8329,7 @@ class _AutoRejoinAddWindow(QDialog):
         self._acc_list.clear()
         self._validation_rows.clear()
         AV = avatars.AVATAR_SIZE
-        ITEM_H = AV + 6
+        ITEM_H = AV + 14
 
         items = list(self.manager.accounts.items())
         if self._current_group is not None:
@@ -8538,7 +8364,7 @@ class _AutoRejoinAddWindow(QDialog):
                 av.setPixmap(cached_pix)
             else:
                 if par and hasattr(par, "_make_placeholder_pixmap"):
-                    theme_runtime.bind_placeholder(av, AV)
+                    theme_runtime.bind_placeholder(av, AV, ui_kit.initials(username))
             rl.addWidget(av_container)
             badge = AccountManagerUIQt._create_invalid_badge(av_container)
 
@@ -8548,13 +8374,10 @@ class _AutoRejoinAddWindow(QDialog):
             rl.addWidget(name_lbl)
 
             if note:
-                sep = QLabel("|")
-                sep.setObjectName("noteSep")
-                sep.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-                rl.addWidget(sep)
                 note_lbl = QLabel(note)
                 note_lbl.setObjectName("noteText")
                 note_lbl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+                note_lbl.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
                 rl.addWidget(note_lbl)
 
             rl.addStretch(1)
@@ -8575,9 +8398,9 @@ class _AutoRejoinAddWindow(QDialog):
             return
         row, name_label, badge = widgets
         badge.setVisible(flagged)
-        theme_runtime.bind_style(name_label, 'color: @RAM_WARNING@; font-style: italic;' if flagged else '')
+        theme_runtime.bind_style(name_label, 'color: @RAM_WARNING@;' if flagged else '')
         name_label.setToolTip(badge.toolTip() if flagged else "")
-        theme_runtime.bind_style(row, 'QWidget { background: rgba(200, 50, 50, 0.06); }' if flagged else '')
+        theme_runtime.bind_style(row, '' if flagged else '')
 
     def _on_add(self):
         join_user = self._join_mode.currentData() == "user"
@@ -8636,7 +8459,7 @@ def _show_error(parent, title: str, msg: str):
     dlg.setWindowTitle(title)
     dlg.setText(msg)
     dlg.setIcon(QMessageBox.Icon.Critical)
-    theme_runtime.bind_style(dlg, f'QMessageBox {{ background: {theme_styles.BG}; color: {theme_styles.TEXT}; }}')
+    theme_runtime.bind_style(dlg, theme_styles.DIALOG + f'QMessageBox {{ background: {theme_styles.BG}; }}')
     dlg.exec()
 
 
@@ -8645,7 +8468,7 @@ def _show_info(parent, title: str, msg: str):
     dlg.setWindowTitle(title)
     dlg.setText(msg)
     dlg.setIcon(QMessageBox.Icon.Information)
-    theme_runtime.bind_style(dlg, f'QMessageBox {{ background: {theme_styles.BG}; color: {theme_styles.TEXT}; }}')
+    theme_runtime.bind_style(dlg, theme_styles.DIALOG + f'QMessageBox {{ background: {theme_styles.BG}; }}')
     dlg.exec()
 
 
@@ -8707,7 +8530,7 @@ def main(icon_path: str | None = None, *, smoke_test: bool = False) -> int:
     # Create it first, before setup_encryption() and before _PasswordDialog.
     diagnostics.set_startup_stage("creating QApplication")
     app = QApplication.instance() or QApplication(sys.argv)
-    app.setApplicationName("Roblox Account Manager")
+    app.setApplicationName("PurpleMulti")
     app.setFont(QFont("Segoe UI", 10))
     apply_palette(app)
     motion_filter = motion.install(app, theme_runtime.color('TEXT'), actions.load_ui_settings())
@@ -8780,8 +8603,8 @@ def main(icon_path: str | None = None, *, smoke_test: bool = False) -> int:
         _show_error(
             None,
             "Hardware Encryption Error",
-            "The hardware-encrypted account data could not be opened on "
-            "this computer. The original file was not changed.\n\n"
+            "The hardware-encrypted account data could not be opened by "
+            "this Windows account. The original file was not changed.\n\n"
             "Error code: ACCOUNT_HARDWARE_DECRYPTION_FAILED\n\n"
             f"Details were saved to:\n{crash_path}",
         )
@@ -8843,7 +8666,7 @@ def main(icon_path: str | None = None, *, smoke_test: bool = False) -> int:
         )
         _show_error(
             None,
-            "Evanovar RAM Could Not Start",
+            "PurpleMulti Could Not Start",
             "The main window could not be created.\n\n"
             f"Details were saved to:\n{crash_path}",
         )

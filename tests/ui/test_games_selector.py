@@ -313,7 +313,7 @@ class FieldIntegrationTests(unittest.TestCase):
             image = button.icon().pixmap(14, 14, mode).toImage()
             pixels = [image.pixelColor(x, y) for y in range(image.height()) for x in range(image.width())]
             self.assertTrue(any(pixel.alpha() > 0 and pixel.name() == QColor(color).name() for pixel in pixels))
-        self.assertEqual(window.minimumSize().width(), 640)
+        self.assertEqual(window.minimumSize().width(), ui.MIN_WINDOW_SIZE[0])
         labels = [label for label in window.findChildren(ui.QLabel) if label.text() == "Place ID"]
         label = next(label for label in labels if label.isVisible())
         self.assertGreater(button.mapTo(window, button.rect().topLeft()).x(),

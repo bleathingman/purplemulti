@@ -189,7 +189,7 @@ class ThemeEditorTests(unittest.TestCase):
 
     def test_library_contains_only_selectable_themes_and_no_duplicate_action(self):
         self.assertEqual([self.editor.selector.itemText(i) for i in range(self.editor.selector.count())],
-                         ['Default', 'Nord'])
+                         ['Purple', 'Nord'])
         self.assertTrue(all(self.editor.selector.itemData(i) for i in range(self.editor.selector.count())))
         self.assertNotIn('Duplicate', [button.text() for button in self.editor.findChildren(QPushButton)])
 

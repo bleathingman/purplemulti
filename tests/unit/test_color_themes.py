@@ -2,20 +2,20 @@ import unittest
 
 from features import color_themes as ct
 
-LEGACY_DEFAULTS = {
-    "BG": "#0E0E0E", "PANEL": "#151515", "INPUT": "#1A1A1A", "TEXT": "#EDEDED",
-    "MUTED": "#AAAAAA", "LINE": "#242424", "SELECT": "#2A2A2A", "NOTE": "#D6BB7D",
-    "ACCENT": "#0078D7",
-    "HOVER": "#3A3A3A", "PRESSED": "#1E1E1E", "RAISED": "#2E2E2E",
-    "ACCENT_HOVER": "#1A8FE0", "ACCENT_PRESSED": "#006DC4", "ACCENT_BRIGHT": "#3A7BD5",
-    "ACCENT_SOFT": "#3A5A9A", "ACCENT_TEXT": "#5DBBFF", "ACCENT_DEEP": "#0A1A2A",
+PURPLE_DEFAULTS = {
+    "BG": "#0E0B16", "PANEL": "#15111F", "INPUT": "#1C1729", "TEXT": "#F2EFF9",
+    "MUTED": "#A59DBB", "LINE": "#2A2339", "SELECT": "#2C2342", "NOTE": "#CDB8FF",
+    "ACCENT": "#7C3AED",
+    "HOVER": "#3A3546", "PRESSED": "#14101F", "RAISED": "#2B2638",
+    "ACCENT_HOVER": "#9058F0", "ACCENT_PRESSED": "#6931C9", "ACCENT_BRIGHT": "#894EEF",
+    "ACCENT_SOFT": "#4A258C", "ACCENT_TEXT": "#B793F5", "ACCENT_DEEP": "#1D1234",
 }
 
 
 class ResolveColorsTests(unittest.TestCase):
-    def test_default_theme_matches_the_colours_the_app_always_used(self):
+    def test_default_theme_is_the_purple_palette(self):
         colors = ct.resolve_colors({})
-        for key, value in LEGACY_DEFAULTS.items():
+        for key, value in PURPLE_DEFAULTS.items():
             with self.subTest(key=key):
                 self.assertEqual(colors[key], value)
         self.assertEqual(colors["ON_ACCENT"], "#FFFFFF")
@@ -42,7 +42,7 @@ class ResolveColorsTests(unittest.TestCase):
 
     def test_choices_start_with_the_default_and_have_labels(self):
         choices = ct.theme_choices()
-        self.assertEqual(choices[0], ("default", "Default"))
+        self.assertEqual(choices[0], ("default", "Purple"))
         self.assertTrue(all(label for _, label in choices))
 
     def test_custom_accent_replaces_the_accent_and_its_variants(self):
@@ -50,9 +50,9 @@ class ResolveColorsTests(unittest.TestCase):
         self.assertEqual(colors["ACCENT"], "#E5557F")
         for key in ct.DERIVED_ACCENT:
             with self.subTest(key=key):
-                self.assertNotEqual(colors[key], LEGACY_DEFAULTS[key])
-        self.assertEqual(colors["BG"], LEGACY_DEFAULTS["BG"])
-        self.assertEqual(colors["HOVER"], LEGACY_DEFAULTS["HOVER"])
+                self.assertNotEqual(colors[key], PURPLE_DEFAULTS[key])
+        self.assertEqual(colors["BG"], PURPLE_DEFAULTS["BG"])
+        self.assertEqual(colors["HOVER"], PURPLE_DEFAULTS["HOVER"])
 
     def test_custom_accent_works_on_every_preset(self):
         for name in ct.PRESETS:

@@ -47,31 +47,36 @@ class WindowResizeTests(unittest.TestCase):
         self.addCleanup(window.close)
         return window
 
+    def fitted(self, size):
+        # The offscreen test display is narrower than the minimum window width.
+        available = self.window().screen().availableGeometry().size()
+        return size.boundedTo(available).expandedTo(QSize(*ui.MIN_WINDOW_SIZE))
+
     def test_original_size_is_the_minimum_and_expansion_is_allowed(self):
         window = self.window()
-        self.assertEqual(window.size(), QSize(640, 520))
+        self.assertEqual(window.size(), QSize(*ui.MIN_WINDOW_SIZE))
         window.resize(300, 200)
-        self.assertEqual(window.size(), QSize(640, 520))
-        window.resize(740, 620)
-        self.assertEqual(window.size(), QSize(740, 620))
+        self.assertEqual(window.size(), QSize(*ui.MIN_WINDOW_SIZE))
+        window.resize(1020, 720)
+        self.assertEqual(window.size(), QSize(1020, 720))
 
     def test_close_flushes_resize_and_the_next_window_restores_it(self):
         window = self.window()
-        window.resize(700, 600)
+        window.resize(1000, 700)
         window.close()
-        self.assertEqual(settings_store.get("main_window_size"), [700, 600])
-        self.assertEqual(self.window().size(), QSize(700, 600))
+        self.assertEqual(settings_store.get("main_window_size"), [1000, 700])
+        self.assertEqual(self.window().size(), self.fitted(QSize(1000, 700)))
 
     def test_bad_or_too_small_saved_sizes_cannot_break_startup(self):
         for value in (None, {}, [True, 600], ["700", 600], [700], [-1, 600], [320, 200]):
             with self.subTest(value=value):
                 settings_store.save("main_window_size", value)
-                self.assertEqual(self.window().size(), QSize(640, 520))
+                self.assertEqual(self.window().size(), QSize(*ui.MIN_WINDOW_SIZE))
 
     def test_saved_size_fits_the_display_even_for_huge_json_integers(self):
         settings_store.save("main_window_size", [10**100, 10**100])
         window = self.window()
-        available = window.screen().availableGeometry().size().expandedTo(QSize(640, 520))
+        available = window.screen().availableGeometry().size().expandedTo(QSize(*ui.MIN_WINDOW_SIZE))
         self.assertEqual(window.size(), available)
 
     def test_dragging_the_grip_resizes_and_cannot_go_below_minimum(self):
@@ -89,7 +94,7 @@ class WindowResizeTests(unittest.TestCase):
                             Qt.KeyboardModifier.NoModifier)
         QApplication.sendEvent(grip, event)
         QTest.mouseRelease(grip, Qt.MouseButton.LeftButton, pos=local)
-        self.assertEqual(window.size(), QSize(700, 580))
+        self.assertEqual(window.size(), self.fitted(QSize(980, 680)))
 
         QTest.mousePress(grip, Qt.MouseButton.LeftButton, pos=local)
         initial = grip.mapToGlobal(local)
@@ -98,7 +103,7 @@ class WindowResizeTests(unittest.TestCase):
                             Qt.KeyboardModifier.NoModifier)
         QApplication.sendEvent(grip, event)
         QTest.mouseRelease(grip, Qt.MouseButton.LeftButton, pos=local)
-        self.assertEqual(window.size(), QSize(640, 520))
+        self.assertEqual(window.size(), QSize(*ui.MIN_WINDOW_SIZE))
 
     def test_keyboard_resize_and_debounced_save(self):
         window = self.window()
@@ -110,15 +115,41 @@ class WindowResizeTests(unittest.TestCase):
                 QTest.keyClick(window.grip, Qt.Key.Key_Right)
             save.assert_not_called()
             QTest.qWait(500)
-            save.assert_called_once_with("main_window_size", [670, 520])
+            save.assert_called_once_with("main_window_size", [950, 620])
+
+    def test_title_bar_maximize_swaps_the_icon_and_hides_the_grip(self):
+        manager = MagicMock()
+        manager.accounts = {}
+        manager.get_encryption_method.return_value = "none"
+        manager.get_secure_setting.return_value = ""
+        with patch.object(ui.QTimer, "singleShot"), \
+                patch.object(ui.threading.Thread, "start"), \
+                patch.object(ui.AccountManagerUIQt, "_setup_system_tray"), \
+                patch.object(ui.EncryptionConfig, "is_setup_complete", return_value=True):
+            window = ui.AccountManagerUIQt(manager)
+            self.addCleanup(window.deleteLater)
+            self.addCleanup(window.close)
+            window.show()
+            self.app.processEvents()
+            self.assertEqual(window._max_btn.toolTip(), "Maximize")
+            window._max_btn.click()
+            self.app.processEvents()
+            self.assertTrue(window.isMaximized())
+            self.assertEqual(window._max_btn.toolTip(), "Restore")
+            self.assertFalse(window._resize_handle.isVisible())
+            window._max_btn.click()
+            self.app.processEvents()
+            self.assertFalse(window.isMaximized())
+            self.assertEqual(window._max_btn.toolTip(), "Maximize")
+            self.assertTrue(window._resize_handle.isVisible())
 
     def test_maximizing_does_not_replace_the_saved_normal_size(self):
         window = self.window()
-        window.resize(700, 600)
+        window.resize(1000, 700)
         window.showMaximized()
         self.app.processEvents()
         window._save_window_size()
-        self.assertEqual(settings_store.get("main_window_size"), [700, 600])
+        self.assertEqual(settings_store.get("main_window_size"), [1000, 700])
 
     def test_main_layout_keeps_the_handle_clear_and_expands_the_account_list(self):
         manager = MagicMock()
@@ -134,9 +165,9 @@ class WindowResizeTests(unittest.TestCase):
             self.addCleanup(window.close)
             window.show()
             self.app.processEvents()
-            self.assertEqual(window.size(), QSize(640, 520))
+            self.assertEqual(window.size(), QSize(*ui.MIN_WINDOW_SIZE))
             before = window._account_list.size()
-            window.resize(1000, 760)
+            window.resize(1300, 860)
             self.app.processEvents()
             self.assertGreater(window._account_list.width(), before.width())
             self.assertGreater(window._account_list.height(), before.height())

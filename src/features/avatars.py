@@ -30,7 +30,7 @@ _MEMORY_CACHE: collections.OrderedDict[str, tuple[bytes, float]] = collections.O
 _MEMORY_CACHE_LIMIT = 128
 _SYNC_RUNNING = False
 
-AVATAR_SIZE = 22
+AVATAR_SIZE = 32
 DEFAULT_CACHE_DAYS = 7
 CACHE_DAYS_SETTING = "avatar_cache_days"
 

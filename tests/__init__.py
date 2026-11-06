@@ -1,1 +1,1 @@
-"""Evanovar RAM tests."""
+"""PurpleMulti tests."""

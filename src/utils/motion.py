@@ -15,6 +15,7 @@ PRESS_ALPHA = 22
 HOVER_MS = 130
 PRESS_MS = 80
 FADE_MS = 150
+OVERLAY_RADIUS = 8
 _MARKER = "_motion_attached"
 _SPI_GETCLIENTAREAANIMATION = 0x1042
 
@@ -51,9 +52,12 @@ class _Overlay(QWidget):
         if alpha <= 0:
             return
         painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
         color = QColor(self._motion.tint)
         color.setAlpha(alpha)
-        painter.fillRect(self.rect(), color)
+        painter.setBrush(color)
+        painter.drawRoundedRect(self.rect(), OVERLAY_RADIUS, OVERLAY_RADIUS)
 
 
 class ButtonMotion(QObject):

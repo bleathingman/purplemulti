@@ -23,14 +23,14 @@ the origin is listed in the websocket_allowed_origins setting.
 
 from __future__ import annotations
 
-import asyncio
+lazy import asyncio
 import collections
 import json
 import secrets
 import shlex
 import threading
 import time
-import websockets
+lazy import websockets
 from typing import TYPE_CHECKING, Callable
 import features.auto_rejoin as _ar
 import features.presence as presence_mod

@@ -40,10 +40,9 @@ l'équivalent d'une session ouverte : qui le possède contrôle le compte.
 - Interface refaite : thème violet par défaut, nouvelle icône, barre latérale,
   cartes, interrupteurs et réglages en onglets.
 - `Ctrl+1`, `Ctrl+2`… ouvrent les pages de la barre latérale, dans l'ordre.
-- Page Donations masquée pour l'instant. Pour la remettre avec tes infos :
-  change `_DONATION_URL`, `_DONATION_USERNAME` et les textes de
-  `_build_donations_panel` dans `src/utils/ui.py`, puis passe
-  `SHOW_DONATIONS_PAGE` à `True`.
+- Page Donations : elle n'apparaît que si `DONATION_LINKS`, en haut de
+  `src/utils/ui.py`, contient au moins un lien (PayPal, Ko-fi…). Chaque lien
+  a une carte avec « Copy Link » et « Open ».
 - Listes vides (comptes, Auto-Rejoin, jeux récents) : message centré qui dit
   quoi faire. Avatars pas encore chargés : initiales du pseudo.
 - Le lanceur fait `uv sync` à chaque démarrage (instantané si rien n'a changé),

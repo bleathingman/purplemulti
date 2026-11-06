@@ -947,9 +947,11 @@ class _ResizeHandle(QSizeGrip):
 
 TITLE_BAR_HEIGHT = 40
 MIN_WINDOW_SIZE = (920, 620)
-# Hidden until the donation details are replaced with this build's own
-# (_DONATION_URL / _DONATION_USERNAME and the texts in _build_donations_panel).
-SHOW_DONATIONS_PAGE = False
+# Donation links shown on the Donations page, as (title, description, url).
+# The page and its sidebar button only appear when this list is not empty.
+# Example: ("PayPal", "One-time donation through PayPal.", "https://paypal.me/<name>")
+DONATION_LINKS: list[tuple[str, str, str]] = []
+SHOW_DONATIONS_PAGE = bool(DONATION_LINKS)
 
 
 class AccountManagerUIQt(QMainWindow): # Main Window
@@ -7293,9 +7295,6 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         if q:
             QTimer.singleShot(0, self._drain_console_queue)
 
-    _DONATION_URL = "https://www.roblox.com/games/718090786/donation#!/store"
-    _DONATION_USERNAME = "evedkdmdj"
-
     def _build_donations_panel(self) -> QFrame:
         panel = QFrame()
         panel.setObjectName("centerPanel")
@@ -7304,33 +7303,35 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         lay.setContentsMargins(*ui_kit.PAGE_MARGINS)
         lay.setSpacing(14)
         lay.addLayout(ui_kit.page_header(
-            "Support the creator",
-            "PurpleMulti is a personal build of Evanovar RAM, the open source account manager "
-            "made by evanovar. Donations go to the original creator.",
+            "Support PurpleMulti",
+            "If PurpleMulti saves you time, you can support its development.",
         ))
 
-        def _copy_button(label: str, value: str, primary: bool) -> QPushButton:
-            button = QPushButton(label)
-            theme_runtime.bind_icon(button, "copy", tone="ON_ACCENT" if primary else None)
+        def _link_buttons(url: str, primary: bool) -> QHBoxLayout:
+            buttons = QHBoxLayout()
+            buttons.setSpacing(8)
+            open_btn = QPushButton("Open")
+            theme_runtime.bind_icon(open_btn, "enter", tone="ON_ACCENT" if primary else None)
             if primary:
-                ui_kit.set_variant(button, "primary")
-            button.setCursor(Qt.CursorShape.PointingHandCursor)
+                ui_kit.set_variant(open_btn, "primary")
+            open_btn.setToolTip(url)
+            open_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            open_btn.clicked.connect(lambda: webbrowser.open(url))
+            copy_btn = QPushButton("Copy Link")
+            theme_runtime.bind_icon(copy_btn, "copy")
+            copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
 
             def _copy():
-                QApplication.clipboard().setText(value)
-                button.setText("Copied")
-                QTimer.singleShot(2000, lambda: button.setText(label))
+                QApplication.clipboard().setText(url)
+                copy_btn.setText("Copied")
+                QTimer.singleShot(2000, lambda: copy_btn.setText("Copy Link"))
 
-            button.clicked.connect(_copy)
-            return button
+            copy_btn.clicked.connect(_copy)
+            buttons.addWidget(copy_btn)
+            buttons.addWidget(open_btn)
+            return buttons
 
-        options = [
-            ("Donation game", "Buy a pass in the donation game's store. Copy the link and open it in your browser.",
-             _copy_button("Copy Link", self._DONATION_URL, True)),
-            ("Roblox username", "Send Robux through a Plus donation to the creator's account.",
-             _copy_button("Copy Username", self._DONATION_USERNAME, False)),
-        ]
-        for title, description, button in options:
+        for index, (title, description, url) in enumerate(DONATION_LINKS):
             frame, card_lay = ui_kit.card()
             row = QHBoxLayout()
             row.setSpacing(16)
@@ -7339,14 +7340,16 @@ class AccountManagerUIQt(QMainWindow): # Main Window
             heading = QLabel(title)
             heading.setObjectName("sectionTitle")
             text.addWidget(heading)
-            text.addWidget(ui_kit.caption(description))
+            if description:
+                text.addWidget(ui_kit.caption(description))
             row.addLayout(text, 1)
-            row.addWidget(button, 0, Qt.AlignmentFlag.AlignVCenter)
+            row.addLayout(_link_buttons(url, primary=index == 0))
             card_lay.addLayout(row)
             lay.addWidget(frame)
 
         lay.addWidget(ui_kit.caption(
-            "Source code and releases: github.com/evanovar/RobloxAccountManager (GPL-3.0)."
+            "PurpleMulti is built on Evanovar RAM by evanovar: "
+            "github.com/evanovar/RobloxAccountManager (GPL-3.0)."
         ))
         lay.addStretch(1)
         return panel

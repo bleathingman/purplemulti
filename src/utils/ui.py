@@ -4496,12 +4496,21 @@ class AccountManagerUIQt(QMainWindow): # Main Window
             self._latest_release = result.data
             self._show_update_dialog(latest)
         else:
-            _show_info(self, "Up to Date", f"You are running the latest version (v{APP_VERSION}).")
+            if updater_mod.ALLOW_SELF_UPDATE:
+                _show_info(self, "Up to Date", f"You are running the latest version (v{APP_VERSION}).")
+            else:
+                _show_info(
+                    self, "Up to Date",
+                    f"This build already includes the latest Evanovar RAM release (v{latest}).",
+                )
 
     def _on_update_available(self, latest_version: str) -> None:
         self._show_update_dialog(latest_version)
 
     def _show_update_dialog(self, latest_version: str) -> None:
+        if not updater_mod.ALLOW_SELF_UPDATE:
+            AccountManagerUIQt._show_upstream_release_dialog(self, latest_version)
+            return
         release = getattr(self, "_latest_release", None) or {}
         notes = release.get("notes", "") if release.get("version") == latest_version else ""
         dlg = QDialog(self)
@@ -4641,6 +4650,64 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         ))
         ignore_btn.clicked.connect(dlg.accept)
 
+        dlg.exec()
+
+    def _show_upstream_release_dialog(self, latest_version: str) -> None:
+        # This build never installs upstream executables: say how to merge the release instead.
+        release = getattr(self, "_latest_release", None) or {}
+        notes = release.get("notes", "") if release.get("version") == latest_version else ""
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Evanovar RAM Update")
+        dlg.setMinimumWidth(460)
+        theme_runtime.bind_style(dlg, theme_styles.DIALOG)
+
+        lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(24, 20, 24, 20)
+        lay.setSpacing(12)
+        lay.addLayout(ui_kit.page_header(
+            f"Evanovar RAM v{latest_version} is available",
+            f"PurpleMulti v{APP_VERSION} is built on Evanovar RAM. Installing the official "
+            "release would replace this build, so merge the new version into it instead:",
+        ))
+        commands = QLabel("git fetch upstream\ngit merge upstream/main\nuv sync --locked")
+        commands.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        commands.setAccessibleName("Merge commands")
+        theme_runtime.bind_style(commands, f"""
+            QLabel {{ font-family: Consolas, monospace; font-size: 12px; background: {theme_styles.INPUT};
+                      border: 1px solid {theme_styles.LINE}; border-radius: {theme_styles.RADIUS}px; padding: 10px 12px; }}
+            """)
+        lay.addWidget(commands)
+        lay.addWidget(ui_kit.caption("Expect conflicts in src/utils/ui.py, where the interface was rewritten."))
+
+        if notes:
+            lay.addWidget(ui_kit.field_label("What's new"))
+            notes_view = QTextEdit()
+            notes_view.setReadOnly(True)
+            notes_view.setPlainText(notes)
+            notes_view.setAccessibleName("Release notes")
+            notes_view.setMinimumHeight(140)
+            lay.addWidget(notes_view, 1)
+
+        buttons = QHBoxLayout()
+        buttons.setSpacing(8)
+        release_btn = QPushButton("View Release")
+        release_btn.setToolTip("Open the release page on GitHub.")
+        skip_btn = QPushButton("Skip This Version")
+        skip_btn.setToolTip("Do not show this release again. A newer one will still be shown.")
+        close_btn = ui_kit.set_variant(QPushButton("Close"), "primary")
+        buttons.addWidget(release_btn)
+        buttons.addStretch(1)
+        buttons.addWidget(skip_btn)
+        buttons.addWidget(close_btn)
+        lay.addLayout(buttons)
+
+        release_btn.clicked.connect(lambda: webbrowser.open(updater_mod.RELEASES_PAGE))
+        skip_btn.clicked.connect(lambda: (
+            actions.save_ui_setting(SKIPPED_UPDATE_SETTING, latest_version),
+            dlg.accept(),
+        ))
+        close_btn.clicked.connect(dlg.accept)
+        close_btn.setDefault(True)
         dlg.exec()
 
     # Cookie Validator

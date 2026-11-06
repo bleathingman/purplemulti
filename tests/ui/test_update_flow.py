@@ -103,6 +103,10 @@ class ManualCheckTests(unittest.TestCase):
 class UpdateDialogTests(unittest.TestCase):
     def setUp(self):
         QApplication.instance() or QApplication([])
+        # The upstream dialog only shows when self-update is allowed.
+        allowed = patch.object(ui.updater_mod, "ALLOW_SELF_UPDATE", True)
+        allowed.start()
+        self.addCleanup(allowed.stop)
         self.window = QWidget()
         self.window._latest_release = {"version": "9.9.9", "notes": "- a\n- b"}
 
@@ -146,6 +150,46 @@ class UpdateDialogTests(unittest.TestCase):
 
     def test_ignoring_remembers_nothing(self):
         seen, save = self.open_dialog(act=lambda s: s["buttons"]["Ignore"].click())
+        save.assert_not_called()
+
+
+class UpstreamReleaseDialogTests(UpdateDialogTests):
+    """Without self-update, a new upstream release is announced as something to merge."""
+
+    def setUp(self):
+        super().setUp()
+        blocked = patch.object(ui.updater_mod, "ALLOW_SELF_UPDATE", False)
+        blocked.start()
+        self.addCleanup(blocked.stop)
+
+    def labels(self, seen):
+        from PySide6.QtWidgets import QLabel
+        return " ".join(label.text() for label in seen["dialog"].findChildren(QLabel))
+
+    def test_the_dialog_has_the_three_choices(self):
+        seen, _ = self.open_dialog()
+        self.assertEqual(set(seen["buttons"]), {"View Release", "Skip This Version", "Close"})
+
+    def test_nothing_offers_to_install_the_upstream_executable(self):
+        with patch.object(ui.updater_mod, "download_update") as download:
+            seen, _ = self.open_dialog(act=lambda s: [b.click() for b in s["buttons"].values()])
+        download.assert_not_called()
+        self.assertNotIn("Download", " ".join(seen["buttons"]))
+
+    def test_the_merge_commands_and_both_versions_are_shown(self):
+        seen, _ = self.open_dialog()
+        text = self.labels(seen)
+        self.assertIn("git merge upstream/main", text)
+        self.assertIn("v9.9.9", text)
+        self.assertIn(f"v{ui.APP_VERSION}", text)
+
+    def test_viewing_the_release_opens_the_upstream_page(self):
+        with patch.object(ui.webbrowser, "open") as browser:
+            self.open_dialog(act=lambda s: s["buttons"]["View Release"].click())
+        browser.assert_called_once_with(ui.updater_mod.RELEASES_PAGE)
+
+    def test_ignoring_remembers_nothing(self):
+        _seen, save = self.open_dialog(act=lambda s: s["buttons"]["Close"].click())
         save.assert_not_called()
 
 

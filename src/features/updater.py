@@ -26,6 +26,8 @@ from utils.app_paths import get_data_dir
 
 GITHUB_API = "https://api.github.com/repos/evanovar/RobloxAccountManager/releases/latest"
 RELEASES_PAGE = "https://github.com/evanovar/RobloxAccountManager/releases/latest"
+# Personal fork: installing an upstream release would replace this build and its changes.
+ALLOW_SELF_UPDATE = False
 RELEASE_ASSET_PATTERN = re.compile(
     r"^EvanovarRAM-v\d+\.\d+\.\d+(?:\.\d+)?\.exe$",
     re.IGNORECASE,
@@ -194,7 +196,7 @@ def verify_download(path: str, expected_size=None, expected_digest=None) -> None
 
 
 def get_update_target() -> str | None:
-    if not getattr(sys, "frozen", False):
+    if not ALLOW_SELF_UPDATE or not getattr(sys, "frozen", False):
         return None
     target = os.path.abspath(sys.executable)
     if not os.path.isfile(target):
@@ -323,7 +325,7 @@ try {{
     Remove-Item -LiteralPath $UpdateDirectory -Force -ErrorAction SilentlyContinue
     exit 0
 }} catch {{
-    $detail = "Evanovar RAM automatic update failed.`r`n"
+    $detail = "PurpleMulti automatic update failed.`r`n"
     $detail += "Timestamp: $([DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))`r`n"
     $detail += "Destination: $DestinationPath`r`n"
     $detail += "Error: $($_.Exception.Message)"
@@ -406,7 +408,7 @@ def download_update(
             on_progress(0)
             asset = get_exe_asset()
             if not asset:
-                on_done(False, "No Evanovar RAM executable was found in the latest release.")
+                on_done(False, "No PurpleMulti executable was found in the latest release.")
                 return
 
             url, filename = asset["url"], asset["name"]

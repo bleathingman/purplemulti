@@ -88,6 +88,19 @@ class RobloxAccountManager:
         
         self.accounts = self.load_accounts()
         self.temp_profile_dir = None
+        self._upgrade_encrypted_files()
+
+    def _upgrade_encrypted_files(self):
+        # Rewrite the main file and its backup so no copy keeps the weaker key.
+        if not getattr(self.encryptor, 'needs_rewrite', False) or self._using_accounts_backup:
+            return
+        self._refresh_accounts_backup = True
+        try:
+            self.save_accounts()
+            print("[INFO] Saved accounts were upgraded to the current encryption format.")
+        except OSError as exc:
+            self._refresh_accounts_backup = False
+            print(f"[WARNING] Could not upgrade the encrypted account file: {exc}")
 
     def set_pre_launch_hook(self, callback) -> None:
         # Set the callback that runs before Roblox launches.

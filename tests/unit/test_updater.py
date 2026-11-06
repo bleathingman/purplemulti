@@ -14,9 +14,19 @@ class UpdaterTests(unittest.TestCase):
             target = os.path.join(work_dir, "My Roblox Manager.exe")
             with open(target, "wb") as handle:
                 handle.write(b"test")
-            with patch.object(updater.sys, "frozen", True, create=True):
+            with patch.object(updater, "ALLOW_SELF_UPDATE", True), \
+                    patch.object(updater.sys, "frozen", True, create=True):
                 with patch.object(updater.sys, "executable", target):
                     self.assertEqual(updater.get_update_target(), target)
+
+    def test_personal_build_never_replaces_itself(self):
+        with tempfile.TemporaryDirectory() as work_dir:
+            target = os.path.join(work_dir, "EvanovarRAM.exe")
+            with open(target, "wb") as handle:
+                handle.write(b"test")
+            with patch.object(updater.sys, "frozen", True, create=True):
+                with patch.object(updater.sys, "executable", target):
+                    self.assertIsNone(updater.get_update_target())
 
     def test_installer_has_bounded_waits_and_parameterized_destination(self):
         script = updater._build_installer_script()

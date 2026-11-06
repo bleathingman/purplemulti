@@ -81,6 +81,7 @@ class ExistingPasswordAccountsTests(unittest.TestCase):
         package = writer.encrypt_data(self.payload)
         if legacy_latin1:
             package.pop("password_encoding")
+            package.pop("kdf")
         self.accounts_path.write_text(json.dumps({"encrypted": True, "data": package}), encoding="utf-8")
         self.config_path.write_text(json.dumps({
             "encryption_enabled": True,
@@ -107,7 +108,11 @@ class ExistingPasswordAccountsTests(unittest.TestCase):
                 migrated = json.loads(self.config_path.read_text(encoding="utf-8"))
                 self.assertNotIn("password_hash", migrated)
                 self.assertEqual(migrated["salt"], original_salt)
-                self.assertEqual(self.accounts_path.read_bytes(), accounts_before)
+                if legacy:
+                    # Only the weaker key derivation is rewritten on open.
+                    self.assertNotEqual(self.accounts_path.read_bytes(), accounts_before)
+                else:
+                    self.assertEqual(self.accounts_path.read_bytes(), accounts_before)
                 self.assertEqual(am.RobloxAccountManager(password).accounts, self.payload["accounts"])
 
     def test_wrong_password_still_fails_without_rewriting_either_file(self):

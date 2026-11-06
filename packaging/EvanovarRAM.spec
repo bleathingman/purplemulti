@@ -32,6 +32,7 @@ hiddenimports = [
     "Crypto",
     "win32event",
     "win32api",
+    "win32crypt",
     "msvcrt",
     "psutil",
     "websockets",

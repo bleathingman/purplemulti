@@ -1,5 +1,5 @@
 """
-Encryption utilities for Roblox Account Manager
+Encryption utilities for PurpleMulti
 Handles hardware-based and password-based encryption
 """
 
@@ -16,8 +16,15 @@ from Crypto.Random import get_random_bytes  # nosec B413
 from Crypto.Protocol.KDF import PBKDF2  # nosec B413
 lazy import pythoncom
 lazy import win32com.client
+lazy import win32crypt
 
 _MACHINE_ID_CACHE = {}
+
+DPAPI_FORMAT = "dpapi-v1"
+_DPAPI_ENTROPY = b"roblox-account-manager-dpapi-v1"
+_CRYPTPROTECT_UI_FORBIDDEN = 0x01
+PASSWORD_KDF = "pbkdf2-sha256-600000"
+PASSWORD_KDF_ITERATIONS = 600000
 
 class EncryptionError(Exception):
     pass
@@ -92,13 +99,14 @@ def _read_wmi_identifiers():
 
 
 class HardwareEncryption:
-    """Hardware-based encryption using machine-specific identifiers"""
-    
+    """Windows DPAPI encryption, with read support for older machine-ID keys"""
+
     def __init__(self):
-        self.machine_id = self._get_machine_id()
-        self.key = self._derive_key_from_machine_id(self.machine_id)
-        self.decryption_key_source = "stable"
-    
+        self.machine_id = None
+        self.key = None
+        self.decryption_key_source = "dpapi"
+        self.needs_rewrite = False
+
     def _get_machine_id(self):
         """Generate unique machine ID from hardware identifiers"""
         cached = _MACHINE_ID_CACHE.get("stable")
@@ -215,28 +223,56 @@ class HardwareEncryption:
         return key
     
     def encrypt_data(self, data):
-        """Encrypt data using hardware-based key"""
+        """Encrypt data with the current Windows user's DPAPI key"""
         if isinstance(data, dict):
             data = json.dumps(data, indent=2, ensure_ascii=False)
-        
-        data_bytes = data.encode('utf-8')
-        
-        cipher = AES.new(self.key, AES.MODE_GCM)
-        nonce = cipher.nonce
-        
-        ciphertext, tag = cipher.encrypt_and_digest(data_bytes)
-        
-        encrypted_package = {
-            'nonce': base64.b64encode(nonce).decode('utf-8'),
-            'tag': base64.b64encode(tag).decode('utf-8'),
-            'ciphertext': base64.b64encode(ciphertext).decode('utf-8')
+
+        blob = win32crypt.CryptProtectData(
+            data.encode('utf-8'),
+            None,
+            _DPAPI_ENTROPY,
+            None,
+            None,
+            _CRYPTPROTECT_UI_FORBIDDEN,
+        )
+        return {
+            'format': DPAPI_FORMAT,
+            'blob': base64.b64encode(blob).decode('utf-8'),
         }
-        
-        return encrypted_package
-    
+
+    def _decrypt_dpapi(self, encrypted_package):
+        try:
+            blob = base64.b64decode(encrypted_package.get('blob'), validate=True)
+        except (ValueError, TypeError, binascii.Error) as exc:
+            raise EncryptedDataError(
+                "The encrypted payload contains invalid encoded data."
+            ) from exc
+        try:
+            _, data_bytes = win32crypt.CryptUnprotectData(
+                blob, _DPAPI_ENTROPY, None, None, _CRYPTPROTECT_UI_FORBIDDEN
+            )
+        except Exception as exc:
+            raise HardwareDecryptionError(
+                "The encrypted data could not be opened by this Windows user."
+            ) from exc
+        self.decryption_key_source = "dpapi"
+        self.needs_rewrite = False
+        data_string = data_bytes.decode('utf-8')
+        try:
+            return json.loads(data_string)
+        except Exception:
+            return data_string
+
     def decrypt_data(self, encrypted_package):
-        """Decrypt data using hardware-based key"""
+        """Decrypt DPAPI data, falling back to the older machine-ID keys"""
+        if isinstance(encrypted_package, dict) and encrypted_package.get('format') == DPAPI_FORMAT:
+            return self._decrypt_dpapi(encrypted_package)
+
         nonce, tag, ciphertext = _decode_encrypted_package(encrypted_package)
+        self.needs_rewrite = True
+        if self.key is None:
+            self.machine_id = self._get_machine_id()
+            self.key = self._derive_key_from_machine_id(self.machine_id)
 
         def _decrypt_with_key(key):
             cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
@@ -289,7 +325,9 @@ class PasswordEncryption:
                 self.salt = salt
         
         self.key = self._derive_key_from_password(password)
-        self._legacy_key = self.key
+        self.needs_rewrite = False
+        self._v1_key = self._derive_v1_key(password)
+        self._legacy_key = self._v1_key
         if isinstance(password, str):
             try:
                 legacy_bytes = password.encode('latin-1')
@@ -300,6 +338,10 @@ class PasswordEncryption:
                     self._legacy_key = PBKDF2(legacy_bytes, self.salt, dkLen=32, count=100000)
     
     def _derive_key_from_password(self, password):
+        password_bytes = password.encode('utf-8') if isinstance(password, str) else password
+        return hashlib.pbkdf2_hmac('sha256', password_bytes, self.salt, PASSWORD_KDF_ITERATIONS, dklen=32)
+
+    def _derive_v1_key(self, password):
         # Pass explicit bytes so Unicode passwords do not use the library's Latin-1 default.
         password_bytes = password.encode('utf-8') if isinstance(password, str) else password
         key = PBKDF2(password_bytes, self.salt, dkLen=32, count=100000)
@@ -323,6 +365,7 @@ class PasswordEncryption:
         
         encrypted_package = {
             'password_encoding': 'utf-8',
+            'kdf': PASSWORD_KDF,
             'nonce': base64.b64encode(nonce).decode('utf-8'),
             'tag': base64.b64encode(tag).decode('utf-8'),
             'ciphertext': base64.b64encode(ciphertext).decode('utf-8')
@@ -337,11 +380,18 @@ class PasswordEncryption:
             encoding = encrypted_package.get('password_encoding')
             if encoding not in (None, 'utf-8'):
                 raise ValueError('Unsupported password encoding')
-            key = self.key if encoding == 'utf-8' else self._legacy_key
+            kdf = encrypted_package.get('kdf')
+            if kdf not in (None, PASSWORD_KDF):
+                raise ValueError('Unsupported key derivation')
+            if kdf == PASSWORD_KDF:
+                key = self.key
+            else:
+                key = self._v1_key if encoding == 'utf-8' else self._legacy_key
             if key is None:
                 raise ValueError('Password cannot unlock legacy data')
             cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
             data_bytes = cipher.decrypt_and_verify(ciphertext, tag)
+            self.needs_rewrite = kdf != PASSWORD_KDF
             data_string = data_bytes.decode('utf-8')
             try:
                 return json.loads(data_string)

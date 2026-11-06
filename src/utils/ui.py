@@ -952,6 +952,9 @@ MIN_WINDOW_SIZE = (920, 620)
 # Example: ("PayPal", "One-time donation through PayPal.", "https://paypal.me/<name>")
 DONATION_LINKS: list[tuple[str, str, str]] = []
 SHOW_DONATIONS_PAGE = bool(DONATION_LINKS)
+# Community link (Discord server...) for the chat button under the sidebar.
+# The button is hidden while this is empty.
+COMMUNITY_URL = ""
 
 
 class AccountManagerUIQt(QMainWindow): # Main Window
@@ -1617,16 +1620,16 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         footer.addWidget(ver_lbl)
         footer.addStretch(1)
 
-        discord_btn = QPushButton()
-        discord_btn.setObjectName("discordBtn")
-        discord_btn.setToolTip("Join Discord server")
-        discord_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        ui_kit.set_variant(discord_btn, "icon")
-        theme_runtime.bind_icon(discord_btn, "chat")
-        discord_btn.clicked.connect(
-            lambda: webbrowser.open("https://discord.gg/SZaZU8zwZA")
-        )
-        footer.addWidget(discord_btn)
+        if COMMUNITY_URL:
+            community_btn = QPushButton()
+            community_btn.setObjectName("communityBtn")
+            community_btn.setToolTip("Join the community")
+            community_btn.setAccessibleName("Join the community")
+            community_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            ui_kit.set_variant(community_btn, "icon")
+            theme_runtime.bind_icon(community_btn, "chat")
+            community_btn.clicked.connect(lambda: webbrowser.open(COMMUNITY_URL))
+            footer.addWidget(community_btn)
         lay.addLayout(footer)
         return panel
 

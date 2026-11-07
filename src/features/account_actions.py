@@ -371,6 +371,8 @@ def get_encryption_status(manager) -> tuple[str, str]:
             if method == "hardware":
                 return "[HARDWARE ENCRYPTED]", "#90EE90"
             elif method == "password":
+                if manager.encryption_config.is_windows_bound():
+                    return "[PASSWORD + WINDOWS ENCRYPTED]", "#87CEEB"
                 return "[PASSWORD ENCRYPTED]", "#87CEEB"
         return "[NOT ENCRYPTED]", "#FFB6C1"
     except Exception:

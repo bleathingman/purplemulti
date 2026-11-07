@@ -54,6 +54,7 @@ CONTROLS = f"""
             QLabel#fieldLabel {{ color: {MUTED}; font-size: 12px; }}
             QLabel#caption {{ color: {MUTED}; font-size: 12px; }}
             QLabel#emptyTitle {{ font-size: 14px; font-weight: 600; }}
+            QLabel#formError {{ color: {ERROR}; font-size: 12px; }}
             QWidget#emptyState, QWidget#emptyState QLabel {{ background: transparent; }}
 
             QPushButton#optionCard {{

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+from ctypes import wintypes
 import os
 import re
 import shutil
@@ -49,13 +50,14 @@ from classes import (
     PasswordRequiredError,
     RobloxAccountManager,
 )
-from classes.encryption import EncryptionConfig, PasswordEncryption
+from classes.encryption import EncryptionConfig
 from classes.operation_result import OperationResult, ensure_result, unexpected_result
 from classes.roblox_api import RobloxAPI
 
 import features.account_actions as actions
 import features.account_backup as account_backup
 import features.auto_backup as auto_backup
+import features.unlock_guard as unlock_guard_mod
 import features.account_creator as account_creator_mod
 import features.auto_rejoin as ar
 import features.account_filter as account_filter
@@ -963,6 +965,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
     def __init__(self, manager, icon_path: str | None = None):
         super().__init__()
         self.manager = manager
+        self._locked = False
         self.manager.set_pre_launch_hook(
             roblox_settings_mod.apply_saved_customizations
         )
@@ -1192,6 +1195,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         self._theme_manager = theme_runtime.get_manager()
         self._theme_manager.register(self)
         self._theme_manager.failed.connect(self._on_theme_failed)
+        self._init_auto_lock()
         print("[INFO] UI ready")
 
 
@@ -1245,13 +1249,16 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         self._page_hosts[2].set_page(self._build_anti_afk_panel())
         self._page_hosts[3].set_page(self._build_multi_roblox_panel())
         self._page_stack.addWidget(self._build_setup_panel()) # idx 7
+        self._lock_page = self._build_lock_panel()
+        self._page_stack.addWidget(self._lock_page) # idx 8
 
         body = QVBoxLayout()
         body.setContentsMargins(0, 0, 0, 0)
         body.setSpacing(0)
         body.addWidget(self._build_title_bar())
         body.addWidget(self._page_stack, 1)
-        outer.addWidget(self._build_nav_panel())
+        self._nav_panel = self._build_nav_panel()
+        outer.addWidget(self._nav_panel)
         outer.addLayout(body, 1)
 
         self._resize_handle = _ResizeHandle(central)
@@ -1431,6 +1438,9 @@ class AccountManagerUIQt(QMainWindow): # Main Window
 
     def changeEvent(self, event):
         super().changeEvent(event)
+        if (event.type() == QEvent.Type.WindowStateChange and self.isMinimized()
+                and unlock_guard_mod.lock_on_minimize(actions.load_ui_settings())):
+            QTimer.singleShot(0, lambda: self._lock_app("minimized"))
         if event.type() == QEvent.Type.WindowStateChange and hasattr(self, "_max_btn"):
             maximized = self.isMaximized()
             theme_runtime.bind_icon(self._max_btn, "restore" if maximized else "maximize", size=14)
@@ -1629,6 +1639,17 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         footer.addWidget(ver_lbl)
         footer.addStretch(1)
 
+        self._nav_lock_btn = QPushButton()
+        self._nav_lock_btn.setToolTip("Lock PurpleMulti (Ctrl+L)")
+        self._nav_lock_btn.setAccessibleName("Lock PurpleMulti")
+        self._nav_lock_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        ui_kit.set_variant(self._nav_lock_btn, "icon")
+        theme_runtime.bind_icon(self._nav_lock_btn, "lock")
+        self._nav_lock_btn.clicked.connect(lambda: self._lock_app("button"))
+        self._nav_lock_btn.hide()
+        footer.addWidget(self._nav_lock_btn)
+        QShortcut(QKeySequence("Ctrl+L"), self, activated=lambda: self._lock_app("shortcut"))
+
         if COMMUNITY_URL:
             community_btn = QPushButton()
             community_btn.setObjectName("communityBtn")
@@ -1666,23 +1687,30 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         btn_group = QButtonGroup(self)
         btn_group.setExclusive(True)
 
-        self._setup_hw_btn = ui_kit.option_card(
-            "Windows account encryption",
-            "Uses Windows DPAPI. No password to type, but only this Windows account can open "
-            "the file. Make an export from time to time to keep a portable copy.",
+        self._setup_pwwin_btn = ui_kit.option_card(
+            "Password + Windows account",
+            "Asked at every start, and the file only opens on this Windows account: a copied "
+            "file cannot even be attacked elsewhere. Turn on Automatic Backup to keep a copy "
+            "that survives a Windows reinstall.",
+            badge="Most secure",
         )
+        self._setup_pwwin_btn.setChecked(True)
         self._setup_pw_btn = ui_kit.option_card(
-            "Password encryption",
-            "Asked at every start. Works on any PC and protects best against other programs, "
-            "but a lost password cannot be recovered.",
+            "Password",
+            "Asked at every start. The file opens on any PC with the password. "
+            "A lost password cannot be recovered.",
         )
-        self._setup_pw_btn.setChecked(True)
+        self._setup_hw_btn = ui_kit.option_card(
+            "Windows account",
+            "Uses Windows DPAPI. No password to type, but anyone using this Windows session "
+            "can open PurpleMulti, and auto-lock is not available.",
+        )
         self._setup_none_btn = ui_kit.option_card(
             "No encryption",
             "Cookies are stored in plain text. Anyone who copies the file can sign in to your accounts.",
         )
 
-        for b in (self._setup_hw_btn, self._setup_pw_btn, self._setup_none_btn):
+        for b in (self._setup_pwwin_btn, self._setup_pw_btn, self._setup_hw_btn, self._setup_none_btn):
             btn_group.addButton(b)
             choice_lay.addWidget(b)
 
@@ -1753,12 +1781,13 @@ class AccountManagerUIQt(QMainWindow): # Main Window
                 self._setup_stack.setCurrentIndex(1)
 
         def _do_hardware():
-            data_folder = get_data_dir()
-            enc = EncryptionConfig(os.path.join(data_folder, "encryption_config.json"))
-            enc.enable_hardware_encryption()
-            _show_info(self, "Hardware Encryption Enabled",
-                       "Hardware-based encryption is now active.\n"
-                       "Your accounts will be encrypted automatically.")
+            try:
+                self.manager.switch_encryption_method("hardware")
+            except Exception as exc:
+                QMessageBox.critical(self, "Encryption", f"Encryption could not be turned on:\n{exc}")
+                return
+            _show_info(self, "Encryption Enabled",
+                       "Your accounts are now encrypted with your Windows account.")
             self._on_setup_complete()
 
         def _do_none():
@@ -1771,9 +1800,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
                 QMessageBox.StandardButton.No,
             )
             if res == QMessageBox.StandardButton.Yes:
-                data_folder = get_data_dir()
-                enc = EncryptionConfig(os.path.join(data_folder, "encryption_config.json"))
-                enc.disable_encryption()
+                self.manager.encryption_config.disable_encryption()
                 self._on_setup_complete()
 
         def _on_confirm_pw():
@@ -1785,13 +1812,16 @@ class AccountManagerUIQt(QMainWindow): # Main Window
             if pw1 != pw2:
                 self._setup_pw_err.setText("Passwords do not match.")
                 return
-            data_folder = get_data_dir()
-            enc = EncryptionConfig(os.path.join(data_folder, "encryption_config.json"))
-            temp = PasswordEncryption(pw1)
-            enc.enable_password_encryption(temp.get_salt_b64())
+            mode = "password_windows" if self._setup_pwwin_btn.isChecked() else "password"
+            try:
+                # Encrypts right away: the open account file never stays in plain text.
+                self.manager.switch_encryption_method(mode, password=pw1)
+            except Exception as exc:
+                self._setup_pw_err.setText(f"Encryption could not be turned on: {exc}")
+                return
             _show_info(self, "Password Encryption Enabled",
-                       "Password encryption is now active.\n"
-                       "Keep your password safe, there is no recovery method.")
+                       "Your accounts are now encrypted with your password.\n"
+                       "Keep it safe: there is no way to recover it.")
             self._on_setup_complete()
 
         self._setup_continue_btn.clicked.connect(_on_continue)
@@ -1807,6 +1837,8 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         self._normal_nav_btns[0].setChecked(True) # Accounts
         self._page_stack.setCurrentIndex(0)
         self._setup_needed = False
+        self._update_encryption_badge()
+        self._refresh_auto_lock_controls()
 
     def _build_center_panel(self) -> QFrame: # Main account list
         panel = QFrame()
@@ -3516,6 +3548,8 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         _enc_btn.clicked.connect(self._on_sett_switch_encryption)
         f.addWidget(_enc_btn)
 
+        self._build_auto_lock_section(f, _sec)
+
         f.addWidget(_sec("DATA"))
         _export_btn = QPushButton("Export Accounts")
         _export_btn.setToolTip(
@@ -5173,23 +5207,29 @@ class AccountManagerUIQt(QMainWindow): # Main Window
             lambda result: self._bridge.chromium_done.emit(result),
         )
 
-    def _on_sett_switch_encryption(self):
-        method_labels = {"hardware": "Hardware", "password": "Password", "none": "No Encryption"}
-        current_method = self.manager.get_encryption_method() or "none"
+    _ENCRYPTION_MODE_LABELS = {
+        "password_windows": "Password + Windows account",
+        "password": "Password",
+        "hardware": "Windows account",
+        "none": "No Encryption",
+    }
 
-        other_methods = [m for m in ("hardware", "password", "none") if m != current_method]
+    def _on_sett_switch_encryption(self):
+        labels = self._ENCRYPTION_MODE_LABELS
+        current_mode = self.manager.get_encryption_mode()
+        other_modes = [m for m in labels if m != current_mode]
         choice, ok = QInputDialog.getItem(
             self, "Switch Encryption Method",
-            f"Current method: {method_labels[current_method]}\n"
+            f"Current method: {labels.get(current_mode, current_mode)}\n"
             "Choose the new encryption method:",
-            [method_labels[m] for m in other_methods], 0, False,
+            [labels[m] for m in other_modes], 0, False,
         )
         if not ok or not choice:
             return
-        new_method = other_methods[[method_labels[m] for m in other_methods].index(choice)]
+        new_mode = other_modes[[labels[m] for m in other_modes].index(choice)]
 
         new_password = None
-        if new_method == "password":
+        if new_mode in ("password", "password_windows"):
             while True:
                 pw1, ok1 = QInputDialog.getText(
                     self, "Set Password", "Enter new password (min. 8 characters):",
@@ -5212,7 +5252,7 @@ class AccountManagerUIQt(QMainWindow): # Main Window
                 new_password = pw1
                 break
 
-        if new_method == "none":
+        if new_mode == "none":
             reply = QMessageBox.warning(
                 self, "No Encryption",
                 "Your account data will be stored in plain text.\n"
@@ -5222,26 +5262,167 @@ class AccountManagerUIQt(QMainWindow): # Main Window
                 QMessageBox.StandardButton.No,
             )
         else:
+            extra = ""
+            if new_mode in ("password_windows", "hardware"):
+                extra = ("\n\nThe file will only open on this Windows account. "
+                         "Turn on Automatic Backup to keep a copy that survives a Windows reinstall.")
             reply = QMessageBox.question(
                 self, "Switch Encryption Method",
-                f"Switch encryption to {method_labels[new_method]}?\n"
-                "Your existing accounts will be re-encrypted in place.",
+                f"Switch encryption to {labels[new_mode]}?\n"
+                "Your existing accounts will be re-encrypted in place." + extra,
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
         if reply != QMessageBox.StandardButton.Yes:
             return
 
         try:
-            self.manager.switch_encryption_method(new_method, password=new_password)
+            self.manager.switch_encryption_method(new_mode, password=new_password)
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to switch encryption method:\n{e}")
             return
 
         self._update_encryption_badge()
+        self._refresh_auto_lock_controls()
         _show_info(
             self, "Encryption Switched",
-            f"Encryption method switched to {method_labels[new_method]}.",
+            f"Encryption method switched to {labels[new_mode]}.",
         )
+
+    # Auto-lock
+    def _build_lock_panel(self) -> QWidget:
+        page = QWidget()
+        page.setObjectName("centerPanel")
+        outer = QVBoxLayout(page)
+        outer.addStretch(1)
+        row = QHBoxLayout()
+        row.addStretch(1)
+        frame, lay = ui_kit.card(spacing=12, margins=(28, 24, 28, 24))
+        frame.setFixedWidth(400)
+        self._lock_form = _UnlockForm(
+            "PurpleMulti is locked",
+            "Enter your password to continue. Auto-Rejoin, Anti-AFK and open Roblox "
+            "clients keep running while locked.",
+        )
+        self._lock_form.submitted.connect(self._on_lock_password)
+        lay.addWidget(self._lock_form)
+        row.addWidget(frame)
+        row.addStretch(1)
+        outer.addLayout(row)
+        outer.addStretch(1)
+        return page
+
+    def _init_auto_lock(self) -> None:
+        self._activity_filter = _ActivityFilter(self)
+        QApplication.instance().installEventFilter(self._activity_filter)
+        self._auto_lock_timer = QTimer(self)
+        self._auto_lock_timer.setInterval(15_000)
+        self._auto_lock_timer.timeout.connect(self._check_auto_lock)
+        self._auto_lock_timer.start()
+        try:
+            # Ask Windows for WM_WTSSESSION_CHANGE so Win+L can lock the app too.
+            ctypes.windll.wtsapi32.WTSRegisterSessionNotification(wintypes.HWND(int(self.winId())), 0)
+        except Exception as exc:
+            print(f"[WARNING] Lock on Windows lock is unavailable: {exc}")
+        self._refresh_auto_lock_controls()
+
+    def _check_auto_lock(self) -> None:
+        if self._locked or not self.manager.uses_password():
+            return
+        minutes = unlock_guard_mod.auto_lock_minutes(actions.load_ui_settings())
+        if unlock_guard_mod.idle_expired(self._activity_filter.last_activity, time.monotonic(), minutes):
+            self._lock_app(f"{minutes} min without activity")
+
+    def _lock_app(self, reason: str = "") -> bool:
+        if self._locked or getattr(self, "_setup_needed", False) or not self.manager.uses_password():
+            return False
+        self._locked = True
+        self._lock_return_index = self._page_stack.currentIndex()
+        kept_states = dict(self._tray_detached_states)
+        self._hide_detached_pages_for_tray()
+        self._tray_detached_states = {**kept_states, **self._tray_detached_states}
+        self._nav_panel.setEnabled(False)
+        self._lock_form.reset()
+        self._page_stack.setCurrentWidget(self._lock_page)
+        self._lock_form.entry.setFocus()
+        print(f"[INFO] PurpleMulti locked ({reason or 'manual'}).")
+        return True
+
+    def _on_lock_password(self, password: str) -> None:
+        if not self.manager.verify_password(password):
+            self._lock_form.reject_password()
+            print("[WARNING] Wrong password on the lock screen.")
+            return
+        self._lock_form.accept_password()
+        self._unlock_app()
+
+    def _unlock_app(self) -> None:
+        self._locked = False
+        self._nav_panel.setEnabled(True)
+        self._page_stack.setCurrentIndex(getattr(self, "_lock_return_index", 0))
+        self._activity_filter.last_activity = time.monotonic()
+        if self.isVisible():
+            self._restore_detached_pages_from_tray()
+        print("[INFO] PurpleMulti unlocked.")
+
+    def _build_auto_lock_section(self, f, _sec) -> None:
+        settings = actions.load_ui_settings()
+        f.addWidget(_sec("AUTO-LOCK"))
+        self._sett_lock_hint = ui_kit.caption()
+        f.addWidget(self._sett_lock_hint)
+
+        minutes_spin = QSpinBox()
+        minutes_spin.setRange(*unlock_guard_mod.AUTO_LOCK_RANGE)
+        minutes_spin.setSpecialValueText("Never")
+        minutes_spin.setSuffix(" min")
+        minutes_spin.setValue(unlock_guard_mod.auto_lock_minutes(settings))
+        minutes_spin.setFixedWidth(90)
+        minutes_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
+        minutes_spin.valueChanged.connect(
+            lambda value: actions.save_ui_setting(unlock_guard_mod.AUTO_LOCK_MINUTES_SETTING, value)
+        )
+        f.addLayout(ui_kit.form_row(
+            "Lock after inactivity", minutes_spin,
+            "Minutes without using PurpleMulti before it locks. 0 = never.",
+        ))
+
+        minimize_chk = QCheckBox("Lock When Minimized or Hidden to Tray")
+        minimize_chk.setChecked(unlock_guard_mod.lock_on_minimize(settings))
+        minimize_chk.toggled.connect(
+            lambda checked: actions.save_ui_setting(unlock_guard_mod.LOCK_ON_MINIMIZE_SETTING, checked)
+        )
+        f.addWidget(minimize_chk)
+
+        windows_chk = QCheckBox("Lock When Windows Is Locked (Win+L)")
+        windows_chk.setChecked(unlock_guard_mod.lock_on_windows_lock(settings))
+        windows_chk.toggled.connect(
+            lambda checked: actions.save_ui_setting(unlock_guard_mod.LOCK_ON_WINDOWS_LOCK_SETTING, checked)
+        )
+        f.addWidget(windows_chk)
+
+        lock_now_btn = QPushButton("Lock Now (Ctrl+L)")
+        theme_runtime.bind_icon(lock_now_btn, "lock")
+        lock_now_btn.clicked.connect(lambda: self._lock_app("button"))
+        f.addWidget(lock_now_btn)
+
+        self._sett_lock_controls = [minutes_spin, minimize_chk, windows_chk, lock_now_btn]
+        self._refresh_auto_lock_controls()
+
+    def _refresh_auto_lock_controls(self) -> None:
+        available = bool(self.manager.uses_password())
+        button = getattr(self, "_nav_lock_btn", None)
+        if button is not None:
+            button.setVisible(available)
+        for control in getattr(self, "_sett_lock_controls", []):
+            control.setEnabled(available)
+        hint = getattr(self, "_sett_lock_hint", None)
+        if hint is not None:
+            hint.setText(
+                "Locks PurpleMulti and asks for your password again. Auto-Rejoin, Anti-AFK "
+                "and open Roblox clients keep running while locked."
+                if available else
+                "Auto-lock needs a password. Switch the encryption above to Password or "
+                "Password + Windows account."
+            )
 
     def _ask_backup_password(self, confirm: bool) -> str | None:
         label = "Backup password:"
@@ -5857,6 +6038,9 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         self._ar_refresh_list()
 
     def nativeEvent(self, event_type, message):
+        if (_is_session_lock_message(message)
+                and unlock_guard_mod.lock_on_windows_lock(actions.load_ui_settings())):
+            self._lock_app("Windows locked")
         if window_grid_mod.is_hotkey_message(message):
             result = window_grid_mod.tile_roblox_windows()
             if not result:
@@ -5975,7 +6159,8 @@ class AccountManagerUIQt(QMainWindow): # Main Window
                 self.showMaximized()
             else:
                 self.showNormal()
-            self._restore_detached_pages_from_tray()
+            if not getattr(self, "_locked", False):
+                self._restore_detached_pages_from_tray()
             self.raise_()
             self.activateWindow()
         except Exception as exc:
@@ -6093,6 +6278,8 @@ class AccountManagerUIQt(QMainWindow): # Main Window
         if hide_to_tray and not self._tray_exit_requested:
             self._tray_restore_maximized = self.isMaximized()
             event.ignore()
+            if unlock_guard_mod.lock_on_minimize(actions.load_ui_settings()):
+                self._lock_app("hidden to tray")
             self._hide_detached_pages_for_tray()
             self.hide()
             return
@@ -6736,7 +6923,8 @@ class AccountManagerUIQt(QMainWindow): # Main Window
     def _update_encryption_badge(self):
         text, _color = actions.get_encryption_status(self.manager)
         tone = "warning" if "NOT" in text else "success"
-        ui_kit.set_chip(self._enc_label, text.strip("[]").capitalize(), tone if text else "")
+        label = text.strip("[]").capitalize().replace("windows", "Windows")
+        ui_kit.set_chip(self._enc_label, label, tone if text else "")
 
     def _on_place_id_changed(self, text: str):
         self._game_name_label.setText("")
@@ -8748,40 +8936,160 @@ def _show_info(parent, title: str, msg: str):
 def apply_palette(app: QApplication) -> None:
     theme_runtime.palette(app)
 
-class _PasswordDialog(QDialog):
-    def __init__(self, parent=None):
+WM_WTSSESSION_CHANGE = 0x02B1
+WTS_SESSION_LOCK = 0x7
+
+
+def _is_session_lock_message(message) -> bool:
+    try:
+        native_message = wintypes.MSG.from_address(int(message))
+        return (native_message.message == WM_WTSSESSION_CHANGE
+                and int(native_message.wParam) == WTS_SESSION_LOCK)
+    except Exception:
+        return False
+
+
+class _ActivityFilter(QObject):
+    """Notes the last input for auto-lock and blocks shortcuts behind the lock screen."""
+
+    _INPUT_EVENTS = {
+        QEvent.Type.MouseButtonPress, QEvent.Type.MouseMove, QEvent.Type.KeyPress, QEvent.Type.Wheel,
+    }
+
+    def __init__(self, window):
+        super().__init__(window)
+        self._window = window
+        self.last_activity = time.monotonic()
+
+    def eventFilter(self, watched, event):
+        kind = event.type()
+        if kind in self._INPUT_EVENTS:
+            self.last_activity = time.monotonic()
+        elif kind == QEvent.Type.Shortcut and getattr(self._window, "_locked", False):
+            return True
+        return False
+
+
+class _UnlockForm(QWidget):
+    """Password entry with a growing wait after wrong attempts (sign-in and lock screens)."""
+
+    submitted = Signal(str)
+
+    def __init__(self, title: str, message: str, button_text: str = "Unlock", parent=None):
         super().__init__(parent)
-        self.password_value = ""
-        self.setWindowTitle("Password Required")
-        self.setFixedSize(360, 130)
-        theme_runtime.bind_style(self, theme_styles.DIALOG)
-        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.MSWindowsFixedSizeDialogHint)
+        self._button_text = button_text
+        self.guard = unlock_guard_mod.UnlockGuard()
 
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(20, 16, 20, 16)
+        lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(10)
+        icon = QPushButton()
+        icon.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        icon.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        ui_kit.set_variant(icon, "icon")
+        theme_runtime.bind_icon(icon, "lock", size=22, tone="ACCENT_TEXT")
+        lay.addWidget(icon, 0, Qt.AlignmentFlag.AlignHCenter)
+        heading = QLabel(title)
+        heading.setObjectName("sectionTitle")
+        heading.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lay.addWidget(heading)
+        text = ui_kit.caption(message)
+        text.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lay.addWidget(text)
 
-        lay.addWidget(QLabel("Enter your password to unlock:"))
+        self.entry = QLineEdit()
+        self.entry.setEchoMode(QLineEdit.EchoMode.Password)
+        self.entry.setPlaceholderText("Password")
+        self.entry.setAccessibleName("Password")
+        self.entry.returnPressed.connect(self._submit)
+        lay.addWidget(self.entry)
 
-        self._entry = QLineEdit()
-        self._entry.setEchoMode(QLineEdit.EchoMode.Password)
-        self._entry.setPlaceholderText("Password")
-        self._entry.returnPressed.connect(self._on_accept)
-        lay.addWidget(self._entry)
+        self.error = QLabel("")
+        self.error.setObjectName("formError")
+        self.error.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.error.setWordWrap(True)
+        lay.addWidget(self.error)
 
-        btn_row = QHBoxLayout()
-        btn_row.addStretch(1)
-        ok_btn = QPushButton("Unlock")
-        ok_btn.setDefault(True)
-        ok_btn.clicked.connect(self._on_accept)
-        cn_btn = QPushButton("Cancel")
-        cn_btn.clicked.connect(self.reject)
-        btn_row.addWidget(ok_btn)
-        btn_row.addWidget(cn_btn)
-        lay.addLayout(btn_row)
+        self.button = ui_kit.set_variant(QPushButton(button_text), "primary")
+        self.button.clicked.connect(self._submit)
+        lay.addWidget(self.button)
 
-    def _on_accept(self):
-        self.password_value = self._entry.text()
+        self._timer = QTimer(self)
+        self._timer.setInterval(250)
+        self._timer.timeout.connect(self._tick)
+
+    def _submit(self) -> None:
+        password = self.entry.text()
+        if not password or self.guard.remaining():
+            return
+        self.button.setEnabled(False)
+        self.button.setText("Checking...")
+        self.error.setText("")
+        QApplication.processEvents()
+        self.submitted.emit(password)
+
+    def reject_password(self, message: str = "Wrong password.") -> None:
+        self.guard.failed()
+        self.entry.clear()
+        self.error.setText(message)
+        self._tick()
+        if self.guard.remaining():
+            self._timer.start()
+
+    def accept_password(self) -> None:
+        self.guard.succeeded()
+        self.reset()
+
+    def reset(self) -> None:
+        self.entry.clear()
+        self.error.setText("")
+        self._tick()
+
+    def _tick(self) -> None:
+        left = self.guard.remaining()
+        self.entry.setEnabled(not left)
+        self.button.setEnabled(not left)
+        if left:
+            self.button.setText(f"Try again in {left} s")
+            return
+        self._timer.stop()
+        self.button.setText(self._button_text)
+        self.entry.setFocus()
+
+
+class _PasswordDialog(QDialog):
+    """Sign-in at startup: retries wrong passwords instead of closing the app."""
+
+    def __init__(self, opener, parent=None):
+        super().__init__(parent)
+        self._opener = opener
+        self.manager = None
+        self.failure = None
+        self.setWindowTitle("PurpleMulti")
+        self.setFixedWidth(380)
+        theme_runtime.bind_style(self, theme_styles.DIALOG)
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.WindowCloseButtonHint)
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(24, 22, 24, 16)
+        lay.setSpacing(10)
+        self.form = _UnlockForm("Unlock PurpleMulti", "Enter your password to open your accounts.")
+        self.form.submitted.connect(self._try_password)
+        lay.addWidget(self.form)
+        quit_btn = ui_kit.set_variant(QPushButton("Quit"), "ghost")
+        quit_btn.clicked.connect(self.reject)
+        lay.addWidget(quit_btn, 0, Qt.AlignmentFlag.AlignHCenter)
+
+    def _try_password(self, password: str) -> None:
+        try:
+            self.manager = self._opener(password)
+        except AccountPasswordError:
+            print("[WARNING] Wrong password at sign-in.")
+            self.form.reject_password()
+            return
+        except Exception as exc:
+            # Other problems (damaged file, other Windows account...) get their own message.
+            self.failure = exc
         self.accept()
 
 
@@ -8814,6 +9122,8 @@ def main(icon_path: str | None = None, *, smoke_test: bool = False) -> int:
     splash.status("Starting", 0.2)
 
     password = None
+    opened_manager = None
+    opening_failure = None
     try:
         diagnostics.set_startup_stage("loading encryption settings")
         data_folder = get_data_dir()
@@ -8823,11 +9133,10 @@ def main(icon_path: str | None = None, *, smoke_test: bool = False) -> int:
         if (enc_cfg.is_encryption_enabled()
                 and enc_cfg.get_encryption_method() == "password"):
             splash.pause()
-            dlg = _PasswordDialog()
-            if dlg.exec() != QDialog.DialogCode.Accepted or not dlg.password_value:
-                _show_error(None, "Error", "Password is required.")
+            dlg = _PasswordDialog(lambda value: RobloxAccountManager(password=value))
+            if dlg.exec() != QDialog.DialogCode.Accepted:
                 return 1
-            password = dlg.password_value
+            opened_manager, opening_failure = dlg.manager, dlg.failure
             splash.resume()
     except Exception as exc:
         crash_path = diagnostics.report_exception(
@@ -8846,7 +9155,9 @@ def main(icon_path: str | None = None, *, smoke_test: bool = False) -> int:
     try:
         diagnostics.set_startup_stage("initializing account manager")
         splash.status("Opening your accounts", 0.5)
-        manager = RobloxAccountManager(password=password)
+        if opening_failure is not None:
+            raise opening_failure
+        manager = opened_manager or RobloxAccountManager(password=password)
     except AccountPasswordError as exc:
         print(f"[ERROR] ACCOUNT_PASSWORD_INVALID: {exc}")
         _show_error(
@@ -8874,9 +9185,11 @@ def main(icon_path: str | None = None, *, smoke_test: bool = False) -> int:
         )
         _show_error(
             None,
-            "Hardware Encryption Error",
-            "The hardware-encrypted account data could not be opened by "
-            "this Windows account. The original file was not changed.\n\n"
+            "Account File Locked to Another Windows Account",
+            "The account data is tied to a Windows account (Windows account or "
+            "Password + Windows encryption) and could not be opened by this one. "
+            "The original file was not changed. Restore your accounts with Import "
+            "Accounts and an automatic backup.\n\n"
             "Error code: ACCOUNT_HARDWARE_DECRYPTION_FAILED\n\n"
             f"Details were saved to:\n{crash_path}",
         )

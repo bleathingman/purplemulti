@@ -52,6 +52,7 @@ PATHS: dict[str, str] = {
     ),
     "chat": '<path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9l-5 4z"/>',
     "download": '<path d="M12 4v11M7 10l5 5 5-5"/><path d="M5 20h14"/>',
+    "lock": '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
 }
 
 _cache: dict[tuple, QPixmap] = {}

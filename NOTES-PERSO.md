@@ -30,11 +30,27 @@ l'équivalent d'une session ouverte : qui le possède contrôle le compte.
 
 ## Différences avec l'original
 
-- Mode « Hardware » : DPAPI, lié au compte Windows, au lieu d'une clé déduite
-  d'identifiants matériels lisibles par n'importe quel programme.
+- Mode « Password + Windows account » (le plus sûr, proposé par défaut au
+  premier lancement) : le fichier est chiffré avec le mot de passe, puis scellé
+  avec DPAPI. Il faut les deux pour l'ouvrir : un fichier volé ne peut même pas
+  être attaqué par essais de mots de passe sur un autre PC. Comme DPAPI, il ne
+  survit pas à une réinstallation de Windows, d'où la sauvegarde automatique.
+- Mode « Windows account » (ex-« Hardware ») : DPAPI, lié au compte Windows,
+  au lieu d'une clé déduite d'identifiants matériels lisibles par n'importe
+  quel programme.
 - Mode mot de passe : PBKDF2-SHA256 à 600 000 itérations au lieu de
   PBKDF2-SHA1 à 100 000.
 - Les anciens fichiers et leur `.bak` sont convertis à l'ouverture.
+- Connexion : un mauvais mot de passe au démarrage permet de réessayer, avec
+  une attente croissante après 2 échecs (2 s, 4 s, 8 s… jusqu'à 60 s).
+- Verrouillage automatique (modes avec mot de passe) : après 15 min sans
+  activité par défaut, quand l'app est réduite ou cachée dans la barre des
+  tâches, et sur Win+L. `Ctrl+L` ou le cadenas en bas de la barre latérale
+  verrouillent tout de suite. Auto-Rejoin, Anti-AFK et les clients Roblox
+  continuent de tourner. Réglages : `Settings > Misc > Auto-Lock`.
+  Code : `src/features/unlock_guard.py` et `_lock_app` dans `ui.py`.
+- Choisir un chiffrement au premier lancement chiffre tout de suite le
+  fichier ouvert (avant, il restait en clair jusqu'au redémarrage).
 - L'auto-update ne remplace plus jamais l'application par la version d'origine.
 
 - Interface refaite : thème violet par défaut, nouvelle icône, barre latérale,
@@ -88,9 +104,15 @@ retombe à 1 px.
 
 ## Limites
 
-- DPAPI protège contre le vol du fichier seul et contre les autres comptes
-  Windows, pas contre un programme qui tourne sous ta session. Le mode mot de
-  passe résiste mieux à ce cas, au prix d'une saisie à chaque démarrage.
+- DPAPI seul protège contre le vol du fichier et contre les autres comptes
+  Windows, pas contre un programme qui tourne sous ta session. Les modes avec
+  mot de passe résistent mieux à ce cas, au prix d'une saisie à chaque
+  démarrage.
+- Une fois l'app déverrouillée, les cookies sont en mémoire : le verrouillage
+  protège contre quelqu'un devant ton PC, pas contre un programme malveillant
+  déjà lancé sous ta session. L'attente après les erreurs ralentit les essais
+  au clavier ; contre un fichier copié, c'est la dérivation de clé (et le
+  scellement Windows) qui protège.
 - DPAPI ne survit pas à une réinstallation de Windows ni à une réinitialisation
   forcée du mot de passe Windows. Active la sauvegarde automatique (ou fais un
   export de temps en temps) : c'est le seul moyen de récupérer les comptes dans

@@ -25,10 +25,15 @@ installation plus légère.
 
 ## Ce qui change par rapport à l'original
 
-- **Chiffrement** : le mode « Hardware » utilise DPAPI, lié au compte Windows,
-  au lieu d'une clé tirée d'identifiants matériels lisibles par n'importe quel
-  programme. Le mode mot de passe passe à PBKDF2-SHA256 avec 600 000
-  itérations. Les anciens fichiers sont convertis à l'ouverture.
+- **Chiffrement** : nouveau mode « Password + Windows account », où le fichier
+  ne s'ouvre qu'avec le mot de passe et sur ce compte Windows. Le mode
+  « Windows account » utilise DPAPI au lieu d'une clé tirée d'identifiants
+  matériels lisibles par n'importe quel programme. Le mode mot de passe passe
+  à PBKDF2-SHA256 avec 600 000 itérations. Les anciens fichiers sont convertis
+  à l'ouverture.
+- **Verrouillage** : l'app se verrouille après une période d'inactivité, quand
+  elle est réduite, ou sur Win+L (`Ctrl+L` pour verrouiller tout de suite).
+  Un mauvais mot de passe impose une attente croissante.
 - **Interface** : thème violet, barre latérale, cartes, réglages en onglets,
   raccourcis `Ctrl+1`, `Ctrl+2`…
 - **Plus léger** : environ 400 Mo installé au lieu de 740 Mo, exe de 48 Mo au

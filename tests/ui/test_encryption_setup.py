@@ -18,30 +18,52 @@ class EncryptionSetupTests(unittest.TestCase):
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
 
-    def test_password_confirmation_creates_a_config_without_a_fast_verifier(self):
-        directory = self.enterContext(tempfile.TemporaryDirectory())
+    def open_setup(self, directory):
         self.enterContext(patch.object(ui, "get_data_dir", return_value=directory))
         self.enterContext(patch("classes.account_manager.get_data_dir", return_value=directory))
         self.enterContext(patch.object(ui, "_show_info"))
         window = QMainWindow()
         self.addCleanup(self.close_window, window)
         window._on_setup_complete = Mock()
+        window.manager = RobloxAccountManager()
+        window.manager.accounts = {"demo": {"cookie": "synthetic-cookie"}}
+        window.manager.save_accounts()
         window.setCentralWidget(ui.AccountManagerUIQt._build_setup_panel(window))
+        return window
+
+    def confirm_password(self, window, password):
         window._setup_continue_btn.click()
         self.assertEqual(window._setup_stack.currentIndex(), 1)
-        password = "test-password-中文"
         window._setup_pw_entry1.setText(password)
         window._setup_pw_entry2.setText(password)
         window._setup_pw_confirm_btn.click()
         window._on_setup_complete.assert_called_once_with()
-        config_path = Path(directory) / "encryption_config.json"
-        config = json.loads(config_path.read_text(encoding="utf-8"))
+
+    def test_password_confirmation_creates_a_config_without_a_fast_verifier(self):
+        directory = self.enterContext(tempfile.TemporaryDirectory())
+        window = self.open_setup(directory)
+        window._setup_pw_btn.click()
+        password = "test-password-中文"
+        self.confirm_password(window, password)
+        config = json.loads((Path(directory) / "encryption_config.json").read_text(encoding="utf-8"))
         self.assertNotIn("password_hash", config)
         self.assertTrue(config["salt"])
         self.assertEqual(config["encryption_method"], "password")
-        manager = RobloxAccountManager(password)
-        manager.accounts = {"demo": {"cookie": "synthetic-cookie"}}
-        manager.save_accounts()
+        self.assertNotIn("bind_to_windows", config)
+        self.assertEqual(RobloxAccountManager(password).accounts["demo"]["cookie"], "synthetic-cookie")
+
+    def test_the_default_choice_seals_to_windows_and_encrypts_right_away(self):
+        directory = self.enterContext(tempfile.TemporaryDirectory())
+        window = self.open_setup(directory)
+        self.assertTrue(window._setup_pwwin_btn.isChecked())
+        password = "test-password"
+        self.confirm_password(window, password)
+        config = json.loads((Path(directory) / "encryption_config.json").read_text(encoding="utf-8"))
+        self.assertTrue(config["bind_to_windows"])
+        self.assertEqual(window.manager.get_encryption_mode(), "password_windows")
+        # The file already open in this session is re-encrypted, not left in plain text.
+        for name in ("saved_accounts.json", "saved_accounts.json.bak"):
+            self.assertNotIn("synthetic-cookie", (Path(directory) / name).read_text(encoding="utf-8"))
         self.assertEqual(RobloxAccountManager(password).accounts["demo"]["cookie"], "synthetic-cookie")
 
     def close_window(self, window):

@@ -21,6 +21,7 @@ from .encryption import (
     HardwareEncryption,
     PasswordDecryptionError,
     PasswordEncryption,
+    WindowsBoundPasswordEncryption,
 )
 from .operation_result import OperationResult, unexpected_result
 from .roblox_api import RobloxAPI
@@ -79,8 +80,13 @@ class RobloxAccountManager:
                     raise AccountDataError(
                         "Password encryption is enabled, but its salt is missing."
                     )
+                encryptor_class = (
+                    WindowsBoundPasswordEncryption
+                    if self.encryption_config.is_windows_bound()
+                    else PasswordEncryption
+                )
                 try:
-                    self.encryptor = PasswordEncryption(password, salt)
+                    self.encryptor = encryptor_class(password, salt)
                 except Exception as exc:
                     raise AccountDataError(
                         "The password encryption configuration is invalid."
@@ -1263,6 +1269,21 @@ class RobloxAccountManager:
         if not self.encryption_config.is_encryption_enabled():
             return None
         return self.encryption_config.get_encryption_method()
+
+    def get_encryption_mode(self):
+        """'hardware', 'password', 'password_windows' or 'none'."""
+        method = self.get_encryption_method()
+        if method == 'password' and self.encryption_config.is_windows_bound():
+            return 'password_windows'
+        return method or 'none'
+
+    def uses_password(self):
+        return isinstance(self.encryptor, PasswordEncryption)
+
+    def verify_password(self, password):
+        """Check a password against the one that unlocked the accounts, without touching files."""
+        encryptor = self.encryptor
+        return isinstance(encryptor, PasswordEncryption) and encryptor.matches(password)
     
     def switch_encryption_method(self, new_method, password=None, salt=None):
         """Switch encryption while keeping the account file and backup compatible."""
@@ -1271,12 +1292,14 @@ class RobloxAccountManager:
 
     def _switch_encryption_method_unlocked(self, new_method, password=None, salt=None):
         """Switch to a different encryption method, re-encrypting (or decrypting) saved_accounts.json in place"""
-        if new_method not in ('hardware', 'password', 'none'):
-            raise ValueError("Invalid encryption method. Must be 'hardware', 'password', or 'none'")
-        if new_method == 'password' and password is None:
+        if new_method not in ('hardware', 'password', 'password_windows', 'none'):
+            raise ValueError(
+                "Invalid encryption method. Must be 'hardware', 'password', 'password_windows', or 'none'"
+            )
+        if new_method in ('password', 'password_windows') and password is None:
             raise ValueError("Password must be provided for password encryption")
 
-        current_method = self.get_encryption_method() or 'none'
+        current_method = self.get_encryption_mode()
         if current_method == new_method:
             print("[INFO] Already using this encryption method")
             return
@@ -1297,11 +1320,13 @@ class RobloxAccountManager:
             if new_method == 'hardware':
                 self.encryption_config.set_encryption_method('hardware')
                 self.encryptor = HardwareEncryption()
-            elif new_method == 'password':
+            elif new_method in ('password', 'password_windows'):
                 if salt is None:
                     salt = os.urandom(32).hex()
-                self.encryption_config.enable_password_encryption(salt)
-                self.encryptor = PasswordEncryption(password, salt)
+                bound = new_method == 'password_windows'
+                self.encryption_config.enable_password_encryption(salt, bind_to_windows=bound)
+                encryptor_class = WindowsBoundPasswordEncryption if bound else PasswordEncryption
+                self.encryptor = encryptor_class(password, salt)
             else:  # 'none'
                 self.encryption_config.disable_encryption()
                 self.encryptor = None

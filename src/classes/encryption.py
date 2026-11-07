@@ -6,6 +6,7 @@ Handles hardware-based and password-based encryption
 import os
 import json
 import base64
+import hmac
 import binascii
 import hashlib
 import platform
@@ -24,6 +25,8 @@ DPAPI_FORMAT = "dpapi-v1"
 _DPAPI_ENTROPY = b"roblox-account-manager-dpapi-v1"
 _CRYPTPROTECT_UI_FORBIDDEN = 0x01
 PASSWORD_KDF = "pbkdf2-sha256-600000"
+WINDOWS_BOUND_FORMAT = "password-dpapi-v1"
+_WINDOWS_BOUND_ENTROPY = b"purplemulti-password-dpapi-v1"
 PASSWORD_KDF_ITERATIONS = 600000
 
 class EncryptionError(Exception):
@@ -347,6 +350,14 @@ class PasswordEncryption:
         key = PBKDF2(password_bytes, self.salt, dkLen=32, count=100000)
         return key
     
+    def matches(self, password) -> bool:
+        """True when the password derives the key this data is encrypted with."""
+        try:
+            candidate = self._derive_key_from_password(password)
+        except Exception:
+            return False
+        return hmac.compare_digest(candidate, self.key)
+
     def get_salt_b64(self):
         """Get base64-encoded salt"""
         return base64.b64encode(self.salt).decode('utf-8')
@@ -401,6 +412,56 @@ class PasswordEncryption:
             raise PasswordDecryptionError(
                 "The password did not authenticate the encrypted data."
             ) from e
+
+
+class WindowsBoundPasswordEncryption(PasswordEncryption):
+    """Password encryption sealed with DPAPI.
+
+    Opening the data needs both the password and this Windows account, so a copied
+    file cannot even be attacked by guessing passwords on another computer.
+    """
+
+    def encrypt_data(self, data):
+        package = super().encrypt_data(data)
+        blob = win32crypt.CryptProtectData(
+            json.dumps(package).encode('utf-8'),
+            None,
+            _WINDOWS_BOUND_ENTROPY,
+            None,
+            None,
+            _CRYPTPROTECT_UI_FORBIDDEN,
+        )
+        return {
+            'format': WINDOWS_BOUND_FORMAT,
+            'blob': base64.b64encode(blob).decode('utf-8'),
+        }
+
+    def decrypt_data(self, encrypted_package):
+        if not (isinstance(encrypted_package, dict)
+                and encrypted_package.get('format') == WINDOWS_BOUND_FORMAT):
+            # Data written before the binding was turned on: read it, then seal it.
+            result = super().decrypt_data(encrypted_package)
+            self.needs_rewrite = True
+            return result
+        try:
+            blob = base64.b64decode(encrypted_package.get('blob'), validate=True)
+        except (ValueError, TypeError, binascii.Error) as exc:
+            raise EncryptedDataError(
+                "The encrypted payload contains invalid encoded data."
+            ) from exc
+        try:
+            _, sealed = win32crypt.CryptUnprotectData(
+                blob, _WINDOWS_BOUND_ENTROPY, None, None, _CRYPTPROTECT_UI_FORBIDDEN
+            )
+        except Exception as exc:
+            raise HardwareDecryptionError(
+                "The encrypted data is bound to another Windows account."
+            ) from exc
+        try:
+            inner = json.loads(sealed.decode('utf-8'))
+        except (ValueError, UnicodeDecodeError) as exc:
+            raise EncryptedDataError("The sealed password package is malformed.") from exc
+        return super().decrypt_data(inner)
 
 
 class EncryptionConfig:
@@ -473,13 +534,22 @@ class EncryptionConfig:
         self.config['setup_completed'] = True
         self.save_config()
     
-    def enable_password_encryption(self, salt):
-        """Enable password-based encryption"""
+    def enable_password_encryption(self, salt, bind_to_windows=False):
+        """Enable password-based encryption, optionally sealed to this Windows account"""
         self.config['encryption_enabled'] = True
         self.config['encryption_method'] = 'password'
         self.config['salt'] = salt
         self.config['setup_completed'] = True
+        if bind_to_windows:
+            self.config['bind_to_windows'] = True
+        else:
+            self.config.pop('bind_to_windows', None)
         self.save_config()
+
+    def is_windows_bound(self):
+        """True when password encryption is also sealed to this Windows account"""
+        return (self.config.get('encryption_method') == 'password'
+                and self.config.get('bind_to_windows') is True)
     
     def disable_encryption(self):
         """Disable encryption"""
@@ -488,6 +558,7 @@ class EncryptionConfig:
         self.config['setup_completed'] = True
         if 'salt' in self.config:
             del self.config['salt']
+        self.config.pop('bind_to_windows', None)
         self.save_config()
     
     def reset_encryption(self):

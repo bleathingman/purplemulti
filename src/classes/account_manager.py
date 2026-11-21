@@ -483,17 +483,12 @@ class RobloxAccountManager:
                 options.add_argument("--disable-plugins")
                 options.add_argument("--disable-dev-shm-usage")
                 options.add_argument("--no-sandbox")
-                options.add_argument("--disable-gpu")
-                options.add_argument("--disable-background-timer-throttling")
-                options.add_argument("--disable-renderer-backgrounding")
-                options.add_argument("--disable-backgrounding-occluded-windows")
                 options.add_argument("--disable-component-extensions-with-background-pages")
                 options.add_argument("--disable-hang-monitor")
                 options.add_argument("--disable-prompt-on-repost")
                 options.add_argument("--disable-domain-reliability")
                 options.add_argument("--disable-component-update")
                 options.add_argument("--disable-background-networking")
-                options.add_argument("--aggressive-cache-discard")
             elif browser_key == "edge":
                 from selenium.webdriver.edge.options import Options
 
@@ -535,7 +530,15 @@ class RobloxAccountManager:
                         options=options,
                     )
                 else:
-                    driver = webdriver.Chrome(options=options)
+                    from selenium.webdriver.chrome.service import Service
+
+                    cached = getattr(self, "_chrome_driver_path", None)
+                    if cached and os.path.isfile(cached):
+                        driver = webdriver.Chrome(service=Service(cached), options=options)
+                    else:
+                        driver = webdriver.Chrome(options=options)
+                        # Selenium Manager starts a process per lookup; later browsers skip it.
+                        self._chrome_driver_path = getattr(driver.service, "path", None)
 
             driver._ram_profile_dir = profile_dir
             driver.set_page_load_timeout(120)
@@ -589,22 +592,23 @@ class RobloxAccountManager:
         return self.setup_browser_driver(browser_path=browser_path)
     
     def wait_for_login(self, driver, timeout=300):
-        from selenium.common.exceptions import WebDriverException
+        from selenium.common.exceptions import JavascriptException, WebDriverException
         print("Please log into your Roblox account")
         
+        # Runs inside the Roblox page. Kept light: two slow timers and one input listener.
         detector_script = """
+        if (window.browserDetect) { window.browserDetect.cleanup(); }
         window.browserDetect = {
             detected: false,
             method: null,
-            debug: [],
             password: sessionStorage.getItem('_ram_pw') || '',
             cleanup: function() {
                 if (this.interval) clearInterval(this.interval);
                 if (this.passwordInterval) clearInterval(this.passwordInterval);
-                if (this.observer) this.observer.disconnect();
+                document.removeEventListener('input', capturePassword, true);
             }
         };
-        
+
         function capturePassword() {
             const pw = document.getElementById('login-password') ||
                        document.getElementById('signup-password') ||
@@ -615,63 +619,37 @@ class RobloxAccountManager:
                 sessionStorage.setItem('_ram_pw', pw.value);
             }
         }
-        
-        window.browserDetect.passwordInterval = setInterval(capturePassword, 50);
-        
+
         function checkLogin() {
-            const now = Date.now();
-            window.browserDetect.debug.push('URL Check at: ' + now);
-            
             const url = window.location.href.toLowerCase();
-            window.browserDetect.debug.push('Current URL: ' + url);
-            
             if (url.includes('/login') || url.includes('/signup') || url.includes('/createaccount')) {
-                window.browserDetect.debug.push('Still on login/signup/create page - not logged in');
                 return false;
             }
-            
-            if (url.includes('/home') || url.includes('/games') || 
+            if (url.includes('/home') || url.includes('/games') ||
                 url.includes('/catalog') || url.includes('/avatar') ||
                 url.includes('/discover') || url.includes('/friends') ||
                 url.includes('/profile') || url.includes('/groups') ||
                 url.includes('/develop') || url.includes('/create') ||
                 url.includes('/transactions') || url.includes('/my/avatar') ||
-                url.includes('roblox.com/users/') && !url.includes('/login')) {
-                
+                url.includes('roblox.com/users/')) {
                 window.browserDetect.detected = true;
                 window.browserDetect.method = 'url';
-                window.browserDetect.debug.push('DETECTED via URL! Page: ' + url);
                 window.browserDetect.cleanup();
                 return true;
             }
-            
-            window.browserDetect.debug.push('Not detected - still checking...');
             return false;
         }
-        
-        checkLogin();
-        
-        window.browserDetect.interval = setInterval(() => {
-            if (checkLogin()) {
-                clearInterval(window.browserDetect.interval);
-            }
-        }, 25);
-        
-        let lastHref = location.href;
-        window.browserDetect.observer = new MutationObserver(() => {
-            if (location.href !== lastHref) {
-                lastHref = location.href;
-                window.browserDetect.debug.push('URL changed to: ' + location.href);
-                if (checkLogin()) {
-                    clearInterval(window.browserDetect.interval);
-                    window.browserDetect.observer.disconnect();
-                }
-            }
-        });
-        window.browserDetect.observer.observe(document, {subtree: true, childList: true});
-        
+
+        // Typing updates the password at once; the timer only covers autofill.
+        document.addEventListener('input', capturePassword, true);
+        window.browserDetect.passwordInterval = setInterval(capturePassword, 500);
+        if (!checkLogin()) {
+            window.browserDetect.interval = setInterval(checkLogin, 250);
+        }
+
         ['beforeunload', 'unload', 'pagehide'].forEach(event => {
             window.addEventListener(event, () => {
+                capturePassword();
                 if (window.browserDetect.password) {
                     sessionStorage.setItem('_ram_pw', window.browserDetect.password);
                 }
@@ -679,7 +657,7 @@ class RobloxAccountManager:
             });
         });
         """
-        
+
         try:
             driver.execute_script(detector_script)
             print("[SUCCESS] Detection script injected successfully")
@@ -691,59 +669,58 @@ class RobloxAccountManager:
         check_count = 0
         last_url = ""
         
+        state_script = (
+            "return {href: location.href,"
+            " alive: !!window.browserDetect,"
+            " detected: !!(window.browserDetect && window.browserDetect.detected)};"
+        )
+        logged_in_paths = ['/home', '/games', '/catalog', '/avatar', '/discover', '/friends',
+                           '/profile', '/groups', '/develop', '/create']
         while time.time() - start_time < timeout:
             try:
                 check_count += 1
-                
-                try:
-                    current_url = driver.current_url.lower()
+                state = driver.execute_script(state_script) or {}
+                current_url = str(state.get("href", "")).lower()
 
-                    if current_url != last_url:
-                        last_url = current_url
-                        alive = driver.execute_script("return !!(window.browserDetect);")
-                        if not alive:
-                            try:
-                                driver.execute_script(detector_script)
-                            except Exception:
-                                pass
-
-                    if any(p in current_url for p in ['/home', '/games', '/catalog', '/avatar', '/discover', '/friends', '/profile', '/groups', '/develop', '/create']) and '/login' not in current_url and '/createaccount' not in current_url:
-                        print(f"[SUCCESS] LOGIN DETECTED via URL check! (check #{check_count})")
+                if current_url != last_url:
+                    last_url = current_url
+                    if not state.get("alive"):
                         try:
-                            driver.execute_script("if(window.browserDetect) window.browserDetect.cleanup();")
+                            driver.execute_script(detector_script)
                         except Exception:
                             pass
-                        return True
-                except Exception:
-                    pass
-                
-                result = driver.execute_script("return window.browserDetect ? window.browserDetect.detected : false;")
-                
-                if result:
-                    print(f"[SUCCESS] LOGIN DETECTED via JS! (check #{check_count}) - Closing browser...")
+
+                on_logged_in_page = (
+                    any(path in current_url for path in logged_in_paths)
+                    and '/login' not in current_url and '/createaccount' not in current_url
+                )
+                if state.get("detected") or on_logged_in_page:
+                    how = "JS" if state.get("detected") else "URL check"
+                    print(f"[SUCCESS] LOGIN DETECTED via {how}! (check #{check_count})")
                     try:
-                        driver.execute_script("window.browserDetect.cleanup();")
+                        driver.execute_script("if(window.browserDetect) window.browserDetect.cleanup();")
                     except Exception:
                         pass
                     return True
-                
+
                 current_time = time.time()
                 if current_time - last_debug_time > 5:
                     last_debug_time = current_time
-                    try:
-                        print(f"[INFO] Still checking... URL: {driver.current_url} (checks: {check_count})")
-                    except Exception:
-                        pass
-                
-                time.sleep(0.02)
-                
+                    print(f"[INFO] Still checking... URL: {current_url} (checks: {check_count})")
+
+                # A login needs no faster reaction, and each check is a WebDriver round trip.
+                time.sleep(0.25)
+
+            except JavascriptException:
+                # The page is changing (redirect after login); check again shortly.
+                time.sleep(0.25)
             except WebDriverException:
                 try:
                     driver.execute_script("if(window.browserDetect) window.browserDetect.cleanup();")
                 except Exception:
                     pass
                 return False
-        
+
         print("[ERROR] Login timeout. Please try again.")
         try:
             driver.execute_script("if(window.browserDetect) window.browserDetect.cleanup();")
